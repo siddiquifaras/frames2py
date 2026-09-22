@@ -1,0 +1,87 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "frames2py"
+version = "0.1.0"
+description = "Non-blocking event-to-frame accumulation engine for event camera pipelines."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [
+    { name = "Faras Siddiqui" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Topic :: Multimedia :: Video",
+    "Typing :: Typed",
+]
+keywords = [
+    "event-camera",
+    "dvs",
+    "neuromorphic",
+    "event-driven",
+    "real-time",
+    "visualization",
+    "accumulation",
+]
+dependencies = [
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+viewer-opencv = ["opencv-python>=4.8"]
+adapter-h5 = ["h5py>=3.9"]
+all = [
+    "opencv-python>=4.8",
+    "h5py>=3.9",
+]
+# Prophesee (metavision-core) and iniVation (dv-processing) are
+# vendor-channel packages not available on PyPI. Install them
+# directly from each vendor. The adapters detect their absence
+# at runtime and raise a clear ImportError with instructions.
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4",
+    "pytest-timeout>=2.2",
+    "mypy>=1.8",
+]
+
+[project.urls]
+Homepage = "https://github.com/siddiquifaras/frames2py"
+Documentation = "https://github.com/siddiquifaras/frames2py/tree/main/docs"
+Repository = "https://github.com/siddiquifaras/frames2py"
+Issues = "https://github.com/siddiquifaras/frames2py/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/frames2py"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/frames2py/**",
+    "LICENSE",
+    "README.md",
+    "pyproject.toml",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
