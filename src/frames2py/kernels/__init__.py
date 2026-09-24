@@ -6,6 +6,6 @@ to ``Accumulator`` or ``Engine`` in their place.
 """
 
 from frames2py.kernels._builtin import EventCount, ExpDecay, Polarity, TimeSurface, TimestampDecay
-from frames2py.kernels._protocol import Kernel, KernelState
+from frames2py.kernels._protocol import Kernel
 
-__all__ = ["Kernel", "KernelState", "EventCount", "Polarity", "TimeSurface", "ExpDecay", "TimestampDecay"]
+__all__ = ["Kernel", "EventCount", "Polarity", "TimeSurface", "ExpDecay", "TimestampDecay"]

@@ -7,8 +7,7 @@ from typing import Any, Protocol, runtime_checkable
 import numpy as np
 from numpy.typing import NDArray
 
-KernelState = Any
-"""Whatever a kernel keeps between calls. The Accumulator stores it and passes it back."""
+KernelState = Any  # opaque: whatever init_state returns, passed back unchanged
 
 
 @runtime_checkable

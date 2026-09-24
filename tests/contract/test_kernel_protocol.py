@@ -61,7 +61,7 @@ def test_public_submodule_paths() -> None:
 
     kernels = importlib.import_module(f"{impl.__name__}.kernels")
     publish = importlib.import_module(f"{impl.__name__}.publish")
-    assert hasattr(kernels, "Kernel")
+    assert set(kernels.__all__) == {"Kernel", "EventCount", "Polarity", "TimeSurface", "ExpDecay", "TimestampDecay"}
     assert hasattr(publish, "SnapshotPublisher")
     assert hasattr(publish, "SeqlockPublisher")
 
