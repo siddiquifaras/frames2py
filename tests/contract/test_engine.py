@@ -213,6 +213,23 @@ class TestLifecycle:
         engine.ingest(events((200, 2, 2, 0)))
         assert engine.snapshot()[1].watermark == 200
 
+    def test_sequence_keeps_increasing_across_reset(self) -> None:
+        engine = KERNELS["event_count"].engine(interval_ms=0.0)
+        engine.ingest(events((1, 1, 1, 0)))
+        engine.ingest(events((2, 1, 1, 0)))
+        before = engine.snapshot()[1].sequence
+        engine.reset()
+        engine.ingest(events((3, 1, 1, 0)))
+        assert engine.snapshot()[1].sequence > before
+
+    def test_uptime_keeps_counting_across_reset(self) -> None:
+        engine = KERNELS["event_count"].engine()
+        while engine.stats.uptime_ns < 2_000_000:  # elapsed time is the input here
+            pass
+        before = engine.stats.uptime_ns
+        engine.reset()
+        assert engine.stats.uptime_ns >= before
+
     @pytest.mark.parametrize("kernel", ALL)
     def test_reset_clears_state_counters_and_snapshot(self, kernel: str) -> None:
         case = KERNELS[kernel]

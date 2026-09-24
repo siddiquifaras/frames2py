@@ -18,8 +18,7 @@ TIMESTAMP_DECAY_MAX_ULP = 1
 """Tolerance on this suite's workloads, not an API guarantee."""
 
 EXP_DECAY_MAX_ULP = 1
-"""Tolerance on this suite's workloads, not an API guarantee. Not yet derived from a
-numerical analysis of the implementation."""
+"""Tolerance on this suite's workloads, not an API guarantee."""
 
 
 def events(*rows: tuple[int, int, int, int]) -> NDArray[Any]:

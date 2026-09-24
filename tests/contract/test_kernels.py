@@ -155,6 +155,22 @@ class TestExpDecay:
         assert whole.read()[1, 1] == np.float32(2.0)
         assert split.read()[1, 1] == np.float32(1.5)
 
+    def test_hot_pixel_over_many_calls(self) -> None:
+        # Thousands of increments into one pixel: storage that rounds each addition to
+        # float32 drifts several ULP from the true value; the output must not.
+        sensor = (32, 24)
+        acc = impl.Accumulator(sensor, impl.ExpDecay(0.999))
+        oracle = ReferenceAccumulator("exp_decay", sensor, decay=0.999)
+        rng = np.random.default_rng(11)
+        for call in range(3_000):
+            flat = np.concatenate([np.full(60, 5), rng.integers(0, sensor[0] * sensor[1], 20)])
+            batch = np.zeros(len(flat), dtype=EVENT_DTYPE)
+            batch["t"], batch["x"], batch["y"] = call, flat % sensor[0], flat // sensor[0]
+            acc.accumulate(batch)
+            oracle.accumulate(batch)
+            if call % 750 == 749:
+                assert_matches(acc.read(), oracle)
+
     def test_across_renormalisation(self) -> None:
         # 400 calls at decay 0.5 take the global scale to 2**-400, far past float32 and
         # float64 exponent range, so any correct lazy scale must renormalise.

@@ -110,6 +110,17 @@ def test_tau_must_be_finite_and_positive(tau: float) -> None:
         impl.TimestampDecay(tau)
 
 
+@pytest.mark.parametrize("decay", [0.0, 1.0, -0.5, 1.5, float("nan"), float("inf"), float("-inf")])
+def test_decay_must_be_finite_and_strictly_between_0_and_1(decay: float) -> None:
+    with pytest.raises(ValueError):
+        impl.ExpDecay(decay)
+
+
+@pytest.mark.parametrize("decay", [1e-300, 0.5, 1 - 1e-12])
+def test_decay_inside_the_domain_is_accepted(decay: float) -> None:
+    impl.ExpDecay(decay)
+
+
 def test_tau_has_no_default() -> None:
     with pytest.raises(TypeError):
         impl.TimestampDecay()
