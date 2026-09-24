@@ -72,8 +72,8 @@ class EventCount:
         pass
 
     def accumulate(self, events: EventArray, state: _Counts, watermark: int | None) -> None:
-        counts = np.bincount(_flat_index(events, state.width), minlength=state.counts.size)
-        np.add(state.counts, counts, out=state.counts, casting="unsafe")  # wraps modulo 2**32
+        # uint32 arithmetic: wraps modulo 2**32. The value must be np.uint32 for the fast path.
+        np.add.at(state.counts, _flat_index(events, state.width), np.uint32(1))
 
     def read(self, state: _Counts, out: NDArray[Any], watermark: int | None) -> None:
         out[...] = state.counts.reshape(out.shape)
@@ -108,8 +108,7 @@ class Polarity:
         index = _flat_index(events, state.width)
         np.multiply(index, 2, out=index)
         np.add(index, events["p"] != 0, out=index)
-        counts = np.bincount(index, minlength=state.counts.size)
-        np.add(state.counts, counts, out=state.counts, casting="unsafe")  # wraps modulo 2**32
+        np.add.at(state.counts, index, np.uint32(1))  # uint32 arithmetic: wraps modulo 2**32
 
     def read(self, state: _Counts, out: NDArray[Any], watermark: int | None) -> None:
         out[...] = state.counts.reshape(out.shape)
