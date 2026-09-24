@@ -213,6 +213,15 @@ class TestLifecycle:
         engine.ingest(events((200, 2, 2, 0)))
         assert engine.snapshot()[1].watermark == 200
 
+    def test_first_ingest_after_reset_publishes(self) -> None:
+        engine = KERNELS["event_count"].engine(interval_ms=HOUR_MS)
+        engine.ingest(events((1, 1, 1, 0)))
+        engine.reset()
+        engine.ingest(events((2, 2, 2, 0)))
+        assert engine.stats.snapshots_published == 1
+        frame, meta = engine.snapshot()
+        assert int(frame[2, 2]) == 1 and meta.watermark == 2
+
     def test_sequence_keeps_increasing_across_reset(self) -> None:
         engine = KERNELS["event_count"].engine(interval_ms=0.0)
         engine.ingest(events((1, 1, 1, 0)))
