@@ -1,8 +1,9 @@
-"""Tests for native (C++) kernel wrappers with NumPy fallback parity.
+"""Tests for native (C++) kernel wrappers.
 
-When the C++ module is not compiled, these kernels automatically fall
-back to their NumPy equivalents.  The tests verify identical output
-regardless of which backend is active.
+The parity tests compare the compiled module with the NumPy kernels. Without
+the compiled module the wrappers fall back to NumPy, so the parity tests skip
+(or fail, with FRAMES2PY_REQUIRE_NATIVE=1) instead of comparing NumPy with
+itself. See tests/native_guard.py.
 """
 
 from __future__ import annotations
@@ -14,6 +15,13 @@ import pytest
 
 from frames2py.core.types import EVENT_DTYPE, SnapshotMeta
 from frames2py.kernels.base import get_kernel
+
+from tests.native_guard import require_native
+
+
+@pytest.fixture
+def native() -> None:
+    require_native("_frames2py_native")
 
 
 def _events_at(positions: list[tuple[int, int, int, int]]) -> np.ndarray:
@@ -34,6 +42,7 @@ def _random_events(n: int, w: int = 64, h: int = 48, seed: int = 42) -> np.ndarr
     return events
 
 
+@pytest.mark.usefixtures("native")
 class TestNativeEventCountParity:
     """Compare native_event_count against event_count (NumPy)."""
 
@@ -82,6 +91,7 @@ class TestNativeEventCountParity:
         assert nat_state.buf.sum() == 0.0
 
 
+@pytest.mark.usefixtures("native")
 class TestNativePolarityParity:
     """Compare native_polarity against polarity (NumPy)."""
 
@@ -109,6 +119,7 @@ class TestNativePolarityParity:
         np.testing.assert_allclose(nat_out, np_out, rtol=1e-5)
 
 
+@pytest.mark.usefixtures("native")
 class TestNativeTimeSurfaceParity:
     """Compare native_time_surface against time_surface (NumPy)."""
 
