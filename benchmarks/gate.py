@@ -201,7 +201,12 @@ def verdicts(
     kernel_stage2: Mapping[str, Any] | None = None,
     engine_stage2: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Per-cell verdicts and the runtime's gate result, from both levels."""
+    """Per-cell verdicts and the runtime's gate result, from both levels.
+
+    Each entry of ``cells`` is the cell's own record (``Cell.to_record()``) plus its
+    ``label``, the per-level results under ``kernel_level`` and ``engine_level``, and
+    its ``verdict``.
+    """
     if kernel_level["target"]["level"] != "kernel" or engine_level["target"]["level"] != "engine":
         raise ValueError("pass the kernel-level document first and the engine-level document second")
     mismatch = _same_code_and_runtime(kernel_level, engine_level)
@@ -212,7 +217,7 @@ def verdicts(
     cells = []
     for cell in gate_cells():
         k, e = kernel[cell.condition], engine[cell.condition]
-        cells.append({**cell.to_record(), "label": cell.label, "kernel": k, "engine": e,
+        cells.append({**cell.to_record(), "label": cell.label, "kernel_level": k, "engine_level": e,
                       "verdict": cell_verdict(k["result"], e["result"])})
     counts = {name: sum(c["verdict"] == name for c in cells) for name in ("PASS", "NOT MET", "INVALID", "INCOMPLETE")}
     reference = is_reference_machine(kernel_level["environment"]) and is_reference_machine(engine_level["environment"])
@@ -271,7 +276,7 @@ def summary(result: Mapping[str, Any]) -> str:
         "|---|---|---|---|---|---|",
     ]
     for cell in result["cells"]:
-        k, e = cell["kernel"], cell["engine"]
+        k, e = cell["kernel_level"], cell["engine_level"]
         def stage(entry: Mapping[str, Any]) -> str:
             text = str(entry["stage1"])
             if entry.get("stage2"):

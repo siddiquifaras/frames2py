@@ -473,7 +473,7 @@ class TestGateClassification:
         _set_rates(kernel, everything)
         _set_rates(engine, {**everything, cells[3].condition: _uniform(21e6)})
         result = gate.verdicts(kernel, engine)
-        assert result["cells"][3]["engine"]["stage1"] == "borderline"
+        assert result["cells"][3]["engine_level"]["stage1"] == "borderline"
         assert result["cells"][3]["verdict"] == "INCOMPLETE"
         assert result["gate"] == "INCONCLUSIVE"
         assert [c.condition for c in gate.borderline_cells(engine)] == [cells[3].condition]
@@ -486,6 +486,14 @@ class TestGateClassification:
         assert passed["cells"][3]["verdict"] == "PASS" and passed["gate"] == "MET"
         _set_rates(second, {cells[3].condition: [20.5e6] * 17 + [19e6] * 3})
         assert gate.verdicts(kernel, engine, engine_stage2=second)["cells"][3]["verdict"] == "NOT MET"
+
+    def test_verdict_cells_identify_their_gate_cell(self) -> None:
+        kernel, engine = _gate_documents()
+        _set_rates(kernel, {c.condition: _uniform(30e6) for c in gate_cells()})
+        _set_rates(engine, {c.condition: _uniform(30e6) for c in gate_cells()})
+        result = json.loads(json.dumps(gate.verdicts(kernel, engine)))
+        assert [Cell.from_record(c) for c in result["cells"]] == list(gate_cells())
+        assert all(c["kernel_level"]["result"] == c["engine_level"]["result"] == "pass" for c in result["cells"])
 
     def test_stage_two_may_only_measure_borderline_cells(self) -> None:
         kernel, engine = _gate_documents()
