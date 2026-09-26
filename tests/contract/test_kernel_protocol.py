@@ -63,7 +63,7 @@ def test_public_submodule_paths() -> None:
     publish = importlib.import_module(f"{impl.__name__}.publish")
     assert set(kernels.__all__) == {"Kernel", "EventCount", "Polarity", "TimeSurface", "ExpDecay", "TimestampDecay"}
     assert hasattr(publish, "SnapshotPublisher")
-    assert hasattr(publish, "SeqlockPublisher")
+    assert hasattr(publish, "ImmutablePublisher")
 
 
 def test_accumulator_uses_a_custom_kernel(kernel: Recording) -> None:
@@ -118,7 +118,8 @@ def test_engine_publishes_by_reading_then_closing_the_window(kernel: Recording) 
     engine.ingest(events((4, 2, 1, 1)))
     names = kernel.names()
     assert names[-2:] == ["read", "close_window"]
-    frame, meta = engine.snapshot()
+    snap = engine.snapshot()
+    frame, meta = snap.frame, snap.meta
     assert frame[1, 2] == 4  # read before the window closed
     assert meta.watermark == 4
 

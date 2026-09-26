@@ -12,9 +12,9 @@ Quick start::
 
     engine = frames2py.Engine((1280, 720), "event_count")
     engine.ingest(events)  # 1-D structured array of frames2py.EVENT_DTYPE
-    snapshot = engine.snapshot()
+    snapshot = engine.snapshot()  # shared and read-only; snapshot.copy() for your own
     if snapshot is not None:
-        frame, meta = snapshot
+        frame, meta = snapshot.frame, snapshot.meta
 """
 
 from frames2py._accumulator import Accumulator
