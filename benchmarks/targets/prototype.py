@@ -12,7 +12,7 @@ float32), and ``decay=0.95`` for ``exp_decay``.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import frames2py
@@ -35,6 +35,7 @@ def _describe(name: str, level: Level) -> dict[str, Any]:
     return {
         "name": name,
         "level": level,
+        "statistic": "median_call",
         "implementation": "frames2py prototype",
         "frames2py_version": frames2py.__version__,
         "kernels": list(PROTOTYPE_KERNELS),
@@ -46,11 +47,15 @@ class PrototypeKernelTarget:
 
     name = "prototype-kernel"
     level: Level = "kernel"
+    statistic = "median_call"
 
     def supports(self, cell: Cell) -> bool:
         return cell.kernel in PROTOTYPE_KERNELS
 
-    def prepare(self, cell: Cell) -> Prepared:
+    def timed_calls(self, cell: Cell, default: int, warmup_calls: int) -> int:
+        return default
+
+    def prepare(self, cell: Cell, batches: Sequence[EventArray] = ()) -> Prepared:
         kernel = get_kernel(cell.kernel)
         state = kernel.init_state(cell.sensor_size)
 
@@ -68,11 +73,15 @@ class PrototypeEngineTarget:
 
     name = "prototype-engine"
     level: Level = "engine"
+    statistic = "median_call"
 
     def supports(self, cell: Cell) -> bool:
         return cell.kernel in PROTOTYPE_KERNELS
 
-    def prepare(self, cell: Cell) -> Prepared:
+    def timed_calls(self, cell: Cell, default: int, warmup_calls: int) -> int:
+        return default
+
+    def prepare(self, cell: Cell, batches: Sequence[EventArray] = ()) -> Prepared:
         engine = Engine(cell.sensor_size, kernel=cell.kernel, snapshot_interval_ms=cell.interval_ms)
 
         def counters() -> Mapping[str, int]:

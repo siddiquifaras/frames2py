@@ -123,6 +123,27 @@ def _gil_enabled() -> bool | None:
     return bool(check()) if check is not None else True
 
 
+def runtime() -> dict[str, Any]:
+    """The interpreter this process runs on, read from the process itself."""
+    return {
+        "python": sys.version.split()[0],
+        "python_build": sys.version,
+        "free_threaded_build": sysconfig.get_config_var("Py_GIL_DISABLED") == 1,
+        "gil_enabled": _gil_enabled(),
+        "numpy": np.__version__,
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "executable": sys.executable,
+    }
+
+
+def _load_average() -> list[float] | None:
+    try:
+        return list(os.getloadavg())
+    except OSError:
+        return None
+
+
 def capture() -> dict[str, Any]:
     """Record the machine, software and repository state."""
     return {
@@ -140,6 +161,7 @@ def capture() -> dict[str, Any]:
         "numpy": np.__version__,
         "frames2py": frames2py.__version__,
         "power": _power(),
+        "load_average": _load_average(),
     }
 
 
