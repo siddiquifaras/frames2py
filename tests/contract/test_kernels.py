@@ -236,6 +236,12 @@ class TestTimestampDecay:
             assert_matches(acc.read(), oracle)
         assert acc.watermark == oracle.watermark
 
+    def test_one_call_spanning_past_float64_exp_range(self) -> None:
+        # The first call spans 1000 tau; exp(1000) overflows float64.
+        acc, oracle = self._pair(tau=1.0)
+        self._feed(acc, oracle, events((0, 1, 1, 0), (1_000, 2, 1, 0), (999, 2, 1, 1)))
+        assert_matches(acc.read(), oracle)
+
     def test_extreme_timestamp_then_ordinary_ones(self) -> None:
         acc, oracle = self._pair()
         self._feed(acc, oracle, events((5, 1, 1, 0)), events((2**63 - 1, 2, 2, 0)), events((100, 1, 1, 0)))
