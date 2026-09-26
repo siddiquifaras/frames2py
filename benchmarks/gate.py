@@ -16,7 +16,9 @@ Per level (kernel, engine) and cell:
     ``STAGE2_REQUIRED_AT_REQUIREMENT`` runs >= the requirement
   - ``not_met``: otherwise
 - ``invalid``: a run's result checks failed, a run was not on the document's
-  runtime, the runs did not see identical input, or the run count is wrong.
+  runtime, the runs did not see identical input, the run count is wrong, or the
+  document's power record shows the machine slept during the run (documents from
+  before power records existed have none and are not affected).
 
 The band is uncertainty around the requirement, not a different requirement.
 
@@ -30,6 +32,7 @@ import statistics
 from collections.abc import Iterable, Mapping
 from typing import Any, Final
 
+from benchmarks import power
 from benchmarks.matrix import GATE_THRESHOLD_EVENTS_PER_S, REFERENCE_MACHINE, Cell, gate_cells
 from benchmarks.measure import run_throughput
 
@@ -78,6 +81,8 @@ def problems(record: Mapping[str, Any], document: Mapping[str, Any], runs: int) 
     digests = record.get("workload_sha256") or []
     if len(set(digests)) != 1 or len(digests) != len(call_ns):
         found.append("runs did not see identical input")
+    if power.slept_during(document.get("power")):
+        found.append(f"the machine slept for {document['power']['slept_ns'] / 1e9:.1f} s during the run")
     return found
 
 

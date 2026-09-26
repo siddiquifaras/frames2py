@@ -19,7 +19,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from benchmarks import environment, results
+from benchmarks import environment, power, results
 from benchmarks.matrix import Cell
 from benchmarks.measure import Policy, measure_memory, summarize, time_calls
 from benchmarks.targets import TARGETS, Target
@@ -147,19 +147,28 @@ def run_suite(
 
     With *process_per_run*, the target must be registered in ``TARGETS``; each
     run constructs its own instance in a fresh process.
+
+    The whole run happens inside ``power.hold_awake()``: on macOS it refuses to start
+    outside full wake and holds its own idle-sleep assertion until the run ends. The
+    document's ``power`` record says whether the machine slept during the run.
     """
     if process_per_run and TARGETS.get(target.name) is None:
         raise ValueError(f"target {target.name!r} is not registered; can't run it in a subprocess")
-    env = environment.capture()
     supported = [cell for cell in cells if target.supports(cell)]
     runs: list[list[RunRecord]] = []
-    for run in range(policy.runs):
-        memory = run == policy.runs - 1
-        label = f"run {run + 1}/{policy.runs} "
-        if process_per_run:
-            runs.append(_run_in_subprocess(supported, target.name, policy, memory, label))
-        else:
-            runs.append(measure_run(supported, target, policy, memory, progress, label))
+    with power.hold_awake(f"frames2py benchmark {suite} {target.name}") as power_record:
+        env = environment.capture()
+        for run in range(policy.runs):
+            memory = run == policy.runs - 1
+            label = f"run {run + 1}/{policy.runs} "
+            if process_per_run:
+                runs.append(_run_in_subprocess(supported, target.name, policy, memory, label))
+            else:
+                runs.append(measure_run(supported, target, policy, memory, progress, label))
+        env_end = environment.capture()
+    if power.slept_during(power_record):
+        progress(f"WARNING: the machine slept for {power_record['slept_ns'] / 1e9:.1f} s during this run; "
+                 "the gate treats its cells as invalid")
 
     per_cell = {cell: [run[i] for run in runs] for i, cell in enumerate(supported)}
     records: list[dict[str, Any]] = []
@@ -190,7 +199,8 @@ def run_suite(
         "schema": results.SCHEMA,
         "suite": suite,
         "environment": env,
-        "environment_end": environment.capture(),
+        "environment_end": env_end,
+        "power": power_record,
         "max_rss_bytes": environment.max_rss_bytes(children=process_per_run),
         "policy": {**policy.to_record(), "process_per_run": process_per_run},
         "target": target.describe(),

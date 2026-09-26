@@ -11,6 +11,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,7 @@ import pytest
 
 from frames2py import EVENT_DTYPE
 
-from benchmarks import environment, gate, report, results
+from benchmarks import environment, gate, power, report, results
 from benchmarks.__main__ import main
 from benchmarks.matrix import (
     GATE_THRESHOLD_EVENTS_PER_S,
@@ -638,6 +639,110 @@ class TestV1Targets:
                 prepared.call(batch)
             prepared.after_call()
         assert not prepared.finish()["valid"]
+
+
+class _FakeMac:
+    """A macOS power backend with a chosen capability value and assertion behaviour."""
+
+    def __init__(self, capabilities: int | None, create_fails: bool = False,
+                 confirms: bool = True) -> None:
+        self.caps, self.create_fails, self.confirms = capabilities, create_fails, confirms
+        self.held: set[int] = set()
+        self.created = 0
+
+    def capabilities(self) -> int | None:
+        return self.caps
+
+    def create_assertion(self, name: str) -> int:
+        if self.create_fails:
+            raise power.PowerStateError("denied")
+        self.created += 1
+        self.held.add(self.created)
+        return self.created
+
+    def assertion_properties(self, assertion: int) -> dict[str, Any]:
+        if not self.confirms or assertion not in self.held:
+            return {}
+        return {"AssertType": power.ASSERTION_TYPE, "AssertLevel": power.ASSERTION_LEVEL_ON, "AssertName": "x"}
+
+    def release_assertion(self, assertion: int) -> None:
+        self.held.discard(assertion)
+
+
+class TestPowerGuard:
+    @pytest.mark.parametrize("caps", [0x1, 0x9, 0x0, None], ids=["cpu-only", "darkwake-net", "none", "unknown"])
+    def test_refuses_outside_full_wake_without_taking_an_assertion(self, caps: int | None) -> None:
+        backend = _FakeMac(caps)
+        with pytest.raises(power.PowerStateError, match="full wake"):
+            with power.hold_awake(backend=backend, platform="darwin"):
+                pytest.fail("the block must not run")
+        assert backend.created == 0
+
+    def test_refuses_when_the_assertion_cannot_be_taken(self) -> None:
+        with pytest.raises(power.PowerStateError):
+            with power.hold_awake(backend=_FakeMac(0x1F, create_fails=True), platform="darwin"):
+                pytest.fail("the block must not run")
+
+    def test_refuses_and_releases_when_the_assertion_cannot_be_confirmed(self) -> None:
+        backend = _FakeMac(0x1F, confirms=False)
+        with pytest.raises(power.PowerStateError, match="confirmed"):
+            with power.hold_awake(backend=backend, platform="darwin"):
+                pytest.fail("the block must not run")
+        assert backend.held == set()
+
+    def test_holds_for_the_block_and_releases_after_it_even_on_error(self) -> None:
+        backend = _FakeMac(0x1F)
+        with pytest.raises(ZeroDivisionError):
+            with power.hold_awake(backend=backend, platform="darwin") as record:
+                assert backend.held == {1}
+                1 / 0
+        assert backend.held == set()
+        assert record["assertion"]["released"] is True and record["end"]["full_wake"] is True
+
+    def test_other_platforms_never_refuse(self) -> None:
+        with power.hold_awake(platform="linux") as record:
+            pass
+        assert record["assertion"] is None and "slept" in record
+
+    def test_sleep_during_the_block_is_recorded_and_voids_gate_cells(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        kernel, _ = _gate_documents()
+        _set_rates(kernel, {c.condition: _uniform(30e6) for c in gate_cells()})
+        clocks = iter([(0, 0), (60_000_000_000, 5_000_000_000)])  # 55 s asleep
+        monkeypatch.setattr(power, "_clock_pair", lambda: next(clocks))
+        with power.hold_awake(platform="linux") as record:
+            pass
+        assert record["slept"] is True and record["slept_ns"] == 55_000_000_000
+        kernel["power"] = record
+        assert all(r["result"] == "invalid" for r in gate.level_results(kernel).values())
+        del kernel["power"]  # documents from before power records keep their classification
+        assert all(r["result"] == "pass" for r in gate.level_results(kernel).values())
+
+    @pytest.mark.skipif(sys.platform != "darwin", reason="IOKit power assertions are macOS only")
+    def test_real_assertion_is_held_and_released(self) -> None:
+        backend = power.MacBackend()
+        if not power.state(backend)["full_wake"]:
+            pytest.skip("not in full wake; the guard would refuse")
+        created: list[int] = []
+        create = backend.create_assertion
+
+        def spy(name: str) -> int:
+            created.append(create(name))
+            return created[-1]
+
+        backend.create_assertion = spy  # type: ignore[method-assign]
+        with power.hold_awake("frames2py test", backend=backend) as record:
+            assert backend.assertion_properties(created[0])["AssertLevel"] == power.ASSERTION_LEVEL_ON
+        assert backend.assertion_properties(created[0]) == {}
+        assert record["slept"] is False
+
+    def test_documents_record_the_power_state(self) -> None:
+        document = _document("kernel", TestRunnerAndResults.CELLS[:1], Policy(runs=1, timed_calls=1, memory_calls=0))
+        assert set(document["power"]) >= {"platform", "start", "end", "slept_ns", "slept", "assertion"}
+        env_power = document["environment"]["power"]
+        expected = {"system_capabilities", "full_wake", "pmset"} if sys.platform == "darwin" else set()
+        assert expected <= set(env_power)
+        if sys.platform == "darwin":
+            assert document["power"]["assertion"]["released"] is True
 
 
 class TestPrototypeTargets:
