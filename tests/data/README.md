@@ -10,6 +10,7 @@ recordings themselves are not committed: `tests/recordings.py` fetches and hash-
 | `sparklers_100k.evt2.raw` | 403,218 | `5570baca8e7cf16ff62e2f067008b54dce0a5daeb17bf231251c125af3219e16` | `sparklers.raw`: its header and every word up to its 100,000th CD event |
 | `active_marker_head.evt3.raw` | 262,457 | `39f9a88866453449573222b7502134bc3f7b4ccb4a9d63757db31e75235f5a24` | `active_marker.raw`: its header and the first 262,144 bytes of its body |
 | `sparklers_100k.aedat4` | 601,525 | `0b79d227ad39d41cac3cba68acc52dbdf7f4ef95747ff9b7775a19a6b4d22b97` | the events of `sparklers_100k.evt2.raw`, written by dv-processing 2.0.4 |
+| `sparklers_100k.h5` | 323,787 | `0a95ae905a195958f6d4e43829ba67d0b9814ce6860b972d3d557babbd5cfcd3` | the same events in DSEC's HDF5 layout, written by h5py 3.16.0 and hdf5plugin 7.1.0 |
 
 ## Sources
 
@@ -41,6 +42,12 @@ are a prefix of the recordings' events.
 - `sparklers_100k.evt2.raw`: 100,000 CD events, t 913,716,224 to 913,728,417 µs (the sensor
   clock, not shifted), x 0 to 639, y 1 to 479, 68,073 OFF and 31,927 ON.
 - `sparklers_100k.aedat4`: the same 100,000 events, in 10 packets, one event stream.
+- `sparklers_100k.h5`: the same 100,000 events. **Derived data**, laid out as DSEC stores
+  its event files: `events/p` uint8, `events/t` uint32, `events/x` and `events/y` uint16,
+  each Blosc-compressed through hdf5plugin (its defaults, chunks of 16,384 events), `t`
+  relative to the int64 scalar `/t_offset` (913,716,224, the first event's time), and
+  DSEC's `/ms_to_idx` (for each millisecond k, the index of the first event with
+  `t >= 1000 k`). Written without object timestamps, so rebuilding gives the same bytes.
 - `active_marker_head.evt3.raw`: 46,893 CD events, t 1,148 to 140,995 µs, all ON (the
   recording has ON events only).
 

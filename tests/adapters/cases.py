@@ -61,8 +61,25 @@ def _aedat4(directory: Path) -> Written:
     return Written(aedat4.open, path, w.events([e for packet in packets for e in packet]))
 
 
+def _hdf5(directory: Path) -> Written:
+    require_backend("h5py", "hdf5plugin")
+    import h5py
+
+    from frames2py.adapters import hdf5
+
+    expected = w.events([(10 * i + 3 * (i % 4), (13 * i) % 640, (7 * i) % 480, i % 2) for i in range(90)])
+    path = directory / "case.h5"
+    with h5py.File(path, "w") as f:
+        f.create_dataset("g/t", data=expected["t"].astype(np.int64) - 1000)  # some negative, lifted by the offset
+        for name in ("x", "y", "p"):
+            f.create_dataset(f"g/{name}", data=expected[name])
+        f.create_dataset("offset", data=np.int64(1000))
+    return Written(hdf5.open, path, expected, {"group": "g", "t_offset": "offset"})
+
+
 CASES: dict[str, Callable[[Path], Written]] = {
     "aedat4": _aedat4,
+    "hdf5": _hdf5,
     "evt2": _evt2,
     "evt3": _evt3,
 }

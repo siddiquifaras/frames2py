@@ -50,8 +50,21 @@ def _aedat4() -> Fixture:
     return Fixture(opener, 100_000)
 
 
+def _hdf5() -> Fixture:
+    require_backend("h5py", "hdf5plugin")
+
+    def opener() -> Any:
+        from frames2py.adapters import hdf5
+
+        return hdf5.open(DATA / "sparklers_100k.h5", group="events", t_offset="t_offset", sensor_size=(640, 480),
+                         batch_size=30_000)
+
+    return Fixture(opener, 100_000)
+
+
 FIXTURES: dict[str, Callable[[], Fixture]] = {
     "aedat4-sparklers": _aedat4,
+    "hdf5-sparklers": _hdf5,
     "evt2-sparklers": lambda: _evt("sparklers_100k.evt2.raw", 100_000, sensor_size=(640, 480)),
     "evt3-active-marker": lambda: _evt("active_marker_head.evt3.raw", 46_893),
 }

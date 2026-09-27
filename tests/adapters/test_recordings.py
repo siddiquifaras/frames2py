@@ -2,7 +2,8 @@
 
 The recordings are downloaded and hash-checked by ``tests.recordings``; a missing one fails
 the test. Expected values come from decoders other than Frames2Py's: OpenEB 5.2.0's default
-RAW path for EVT and faery 0.7 for AEDAT4, as ``EVENT_DTYPE`` bytes.
+RAW path for EVT and faery 0.7 for AEDAT4, as ``EVENT_DTYPE`` bytes; for DSEC's HDF5, the
+dataset's own ``ms_to_idx`` index and the event totals.
 """
 
 from __future__ import annotations
@@ -146,3 +147,43 @@ class TestAedat4Recordings:
             assert reader.sensor_size == geometry
             stats = digest_and_stats(iter(reader))
         assert (stats["count"], stats["sha256"], stats["t"]) == (count, sha, t_range)
+
+
+class TestDsecRecording:
+    """DSEC ``thun_01_a`` left events: 131,482,728 events, ``t`` uint32 relative to ``/t_offset``."""
+
+    NAME = "dsec_thun_01_a_events_left.h5"
+    OFFSET = 49_739_900_557
+
+    def test_events_follow_the_dataset_index(self) -> None:
+        from tests.adapters.backends import require_backend
+
+        require_backend("h5py", "hdf5plugin")
+        import h5py
+
+        from frames2py.adapters import hdf5
+
+        path = local(self.NAME)
+        with h5py.File(path) as f:
+            ms_to_idx = f["ms_to_idx"][:]
+            assert int(f["t_offset"][()]) == self.OFFSET
+        n, t_min, t_max, polarity = 0, None, None, np.zeros(2, dtype=np.int64)
+        x_max = y_max = 0
+        with hdf5.open(path, group="events", t_offset="/t_offset", sensor_size=(640, 480)) as reader:
+            for batch in reader:
+                relative = batch["t"].astype(np.int64) - self.OFFSET
+                inside = ms_to_idx[(ms_to_idx >= n) & (ms_to_idx < n + len(batch))]
+                for i in inside.tolist():
+                    k = int(np.searchsorted(ms_to_idx, i))
+                    assert relative[i - n] >= 1000 * k
+                    if i > n:
+                        assert relative[i - n - 1] < 1000 * k
+                t_min = int(batch["t"].min()) if t_min is None else min(t_min, int(batch["t"].min()))
+                t_max = int(batch["t"].max()) if t_max is None else max(t_max, int(batch["t"].max()))
+                x_max, y_max = max(x_max, int(batch["x"].max())), max(y_max, int(batch["y"].max()))
+                polarity += np.bincount(batch["p"], minlength=2)[:2]
+                n += len(batch)
+        assert n == 131_482_728
+        assert (t_min, t_max) == (self.OFFSET, self.OFFSET + 9_800_999)
+        assert (x_max, y_max) == (639, 479)
+        assert polarity.tolist() == [61_362_404, 70_120_324]

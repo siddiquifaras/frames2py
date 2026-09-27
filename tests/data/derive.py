@@ -81,10 +81,36 @@ def aedat4_rewrite() -> bytes:
         target.unlink()
 
 
+def hdf5_rewrite() -> bytes:
+    """The sparklers excerpt's events in DSEC's layout: ``events/{p,t,x,y}`` Blosc-compressed
+    (hdf5plugin defaults, chunks of 16,384 events), ``t`` as uint32 relative to the int64 scalar
+    ``/t_offset``, and DSEC's ``/ms_to_idx`` index."""
+    import h5py
+    import hdf5plugin
+
+    events = sparklers_events()
+    assert (np.diff(events["t"].astype(np.int64)) >= 0).all()
+    offset = int(events["t"].min())
+    t = (events["t"] - np.uint64(offset)).astype(np.uint32)
+    ms_to_idx = np.searchsorted(t, np.arange(int(t.max()) // 1000 + 1, dtype=np.uint32) * 1000).astype(np.uint64)
+    target = HERE / "hdf5_rewrite.tmp"
+    with h5py.File(target, "w", track_order=False) as f:
+        group = f.create_group("events", track_order=False)
+        for name, values in (("p", events["p"]), ("t", t), ("x", events["x"]), ("y", events["y"])):
+            group.create_dataset(name, data=values, chunks=(16_384,), track_times=False, **hdf5plugin.Blosc())
+        f.create_dataset("t_offset", data=np.int64(offset), track_times=False)
+        f.create_dataset("ms_to_idx", data=ms_to_idx, chunks=ms_to_idx.shape, track_times=False, **hdf5plugin.Blosc())
+    try:
+        return target.read_bytes()
+    finally:
+        target.unlink()
+
+
 FIXTURES: Final[dict[str, Callable[[], bytes]]] = {
     "sparklers_100k.evt2.raw": evt2_excerpt,
     "active_marker_head.evt3.raw": evt3_excerpt,
     "sparklers_100k.aedat4": aedat4_rewrite,
+    "sparklers_100k.h5": hdf5_rewrite,
 }
 
 

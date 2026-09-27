@@ -8,31 +8,32 @@ from pathlib import Path
 
 import pytest
 
-BACKENDS = {"aedat4": ("dv_processing",)}
+BACKENDS = {"aedat4": ("dv_processing",), "hdf5": ("h5py", "hdf5plugin")}
 
 
 def test_importing_frames2py_and_every_adapter_imports_no_backend() -> None:
     code = (
-        "import sys; import frames2py, frames2py.adapters.evt, frames2py.adapters.aedat4; "
+        "import sys; import frames2py, frames2py.adapters.evt, frames2py.adapters.aedat4, frames2py.adapters.hdf5; "
         "loaded = sorted(m for m in ('dv_processing', 'h5py', 'hdf5plugin') if m in sys.modules); "
         "assert not loaded, loaded"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
 
 
-@pytest.mark.parametrize("adapter", sorted(BACKENDS))
+@pytest.mark.parametrize(("adapter", "blocked"), [(a, (m,)) for a, mods in sorted(BACKENDS.items()) for m in mods])
 def test_missing_backend_raises_import_error_naming_the_extra(
-    adapter: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    adapter: str, blocked: tuple[str, ...], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     import importlib
 
     module = importlib.import_module(f"frames2py.adapters.{adapter}")
-    for name in BACKENDS[adapter]:
+    for name in blocked:
         monkeypatch.setitem(sys.modules, name, None)  # makes ``import name`` raise ImportError
     path = tmp_path / "file"
     path.write_bytes(b"")
+    kwargs = {"group": "events"} if adapter == "hdf5" else {}
     with pytest.raises(ImportError, match=rf"frames2py\[{adapter}\]") as info:
-        module.open(path)
+        module.open(path, **kwargs)
     assert isinstance(info.value.__cause__, ImportError)
 
 
