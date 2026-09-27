@@ -3,7 +3,7 @@
     uv run python -m tests.data.derive [--check]
 
 Each fixture is derived from a CC0 Prophesee recording fetched and verified by
-``tests.recordings``; ``README.md`` gives the provenance. With ``--check`` nothing is
+``tests.recordings``; ``PROVENANCE.md`` gives the provenance. With ``--check`` nothing is
 written: the rebuilt bytes are compared with the committed files.
 """
 
