@@ -35,6 +35,20 @@ def events(*rows: tuple[int, int, int, int]) -> NDArray[Any]:
     return np.array(list(rows), dtype=EVENT_DTYPE)
 
 
+BACKWARD_JUMP = (
+    events((10**12, 1, 1, 0), (10**12 - 3, 4, 2, 1)),
+    events((5, 1, 1, 1), (7, 3, 2, 0)),
+)
+"""A long-running source clock, then the same source after its clock restarted near 0."""
+
+FORWARD_SPIKE = (
+    events((1_000, 1, 1, 0), (1_002, 3, 2, 1)),
+    events((2**62, 5, 3, 0)),
+    events((1_010, 1, 1, 1)),
+)
+"""Ordinary timestamps, one far-future timestamp, then ordinary timestamps again."""
+
+
 def random_events(
     seed: int,
     n: int,

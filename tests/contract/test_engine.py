@@ -9,7 +9,16 @@ import numpy as np
 import pytest
 
 from tests.contract.api import EVENT_DTYPE, accumulated, impl
-from tests.contract.helpers import ALL, KERNELS, SENSOR, assert_matches, events, random_events
+from tests.contract.helpers import (
+    ALL,
+    BACKWARD_JUMP,
+    FORWARD_SPIKE,
+    KERNELS,
+    SENSOR,
+    assert_matches,
+    events,
+    random_events,
+)
 
 HOUR_MS = 3_600_000.0
 
@@ -279,6 +288,34 @@ class TestLifecycle:
         frame, meta = snap.frame, snap.meta
         assert_matches(frame, oracle)
         assert meta.watermark == 3
+
+    @pytest.mark.filterwarnings("error")
+    @pytest.mark.parametrize(
+        ("batches", "watermark"), [(BACKWARD_JUMP, 10**12), (FORWARD_SPIKE, 2**62)], ids=["backward", "forward"]
+    )
+    @pytest.mark.parametrize("kernel", ALL)
+    def test_reset_recovers_from_a_timestamp_discontinuity(
+        self, kernel: str, batches: tuple[np.ndarray, ...], watermark: int
+    ) -> None:
+        case = KERNELS[kernel]
+        engine = case.engine(interval_ms=0.0)
+        oracle = case.oracle()
+        for batch in batches:
+            engine.ingest(batch)
+            oracle.accumulate(batch)
+            snap = engine.snapshot()
+            assert_matches(snap.frame, oracle)
+            _publish(oracle, case.windowed)
+        assert snap.meta.watermark == watermark
+        engine.reset()
+        assert engine.snapshot() is None
+        fresh = case.oracle()
+        clean = events((20, 1, 1, 0), (25, 2, 3, 1))
+        engine.ingest(clean)
+        fresh.accumulate(clean)
+        snap = engine.snapshot()
+        assert_matches(snap.frame, fresh)
+        assert snap.meta.watermark == 25
 
 
 class TestStats:
