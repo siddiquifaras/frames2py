@@ -42,15 +42,9 @@ dependencies = [
 
 [project.optional-dependencies]
 viewer-opencv = ["opencv-python>=4.8"]
-adapter-h5 = ["h5py>=3.9"]
 all = [
     "opencv-python>=4.8",
-    "h5py>=3.9",
 ]
-# Prophesee (metavision-core) and iniVation (dv-processing) are
-# vendor-channel packages not available on PyPI. Install them
-# directly from each vendor. The adapters detect their absence
-# at runtime and raise a clear ImportError with instructions.
 
 [dependency-groups]
 dev = [
