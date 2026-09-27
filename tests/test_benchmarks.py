@@ -806,3 +806,35 @@ def test_cli_lists_the_gate(capsys: pytest.CaptureFixture[str]) -> None:
     assert capsys.readouterr().out.rstrip().endswith("150 cells, 150 in the hard gate")
     assert main(["list", "--suite", "prototype-baseline", "--batch-size", "10000", "--interval", "0"]) == 0
     assert capsys.readouterr().out.rstrip().endswith("12 cells, 0 in the hard gate")
+
+
+class TestAdapterCharacterisation:
+    """The adapter benchmark measures what it says, on a committed fixture, in this process."""
+
+    def test_document_records_conditions_counts_and_rates(self) -> None:
+        from benchmarks import adapters
+
+        fixture = Path(__file__).resolve().parent / "data" / "sparklers_100k.evt2.raw"
+        document = adapters.run("sparklers_100k.evt2.raw", runs=2, process_per_run=False, path=fixture, adapter="evt",
+                                open_kwargs={"sensor_size": (640, 480)}, expected_events=100_000)
+        assert document["schema"] == adapters.SCHEMA and document["policy"] == {"runs": 2, "process_per_run": False}
+        assert document["backends"]["numpy"] == np.__version__
+        for run in document["runs"]:
+            assert run["events"] == 100_000 and run["checks"] == {"events_match": True}
+            assert (run["t_min"], run["t_max"]) == (913_716_224, 913_728_417)
+            assert run["file_bytes"] == fixture.stat().st_size
+            assert run["snapshots_published"]["ingest"] >= 1
+        assert "decode_peak_traced_bytes" in document["runs"][-1]
+        per_run = document["per_run"][0]
+        span_s = (913_728_417 - 913_716_224) / 1e6
+        assert per_run["recording_events_per_s"] == pytest.approx(100_000 / span_s)
+        assert per_run["real_time_factor"] == pytest.approx(span_s / (document["runs"][0]["decode_ns"] / 1e9))
+        assert "via frames2py.adapters.evt" in adapters.report(document)
+
+    def test_a_wrong_event_count_makes_the_document_invalid(self) -> None:
+        from benchmarks import adapters
+
+        fixture = Path(__file__).resolve().parent / "data" / "active_marker_head.evt3.raw"
+        document = adapters.run("active_marker_head", runs=1, process_per_run=False, path=fixture, adapter="evt",
+                                open_kwargs={}, expected_events=1)
+        assert document["valid"] is False and "INVALID" in adapters.report(document)

@@ -1,4 +1,4 @@
-"""Command line: ``uv run python -m benchmarks {list,run,report,stage2,gate}``."""
+"""Command line: ``uv run python -m benchmarks {list,run,report,stage2,gate,adapters,adapters-report}``."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from benchmarks import environment, gate, report, results
+from benchmarks import adapters, environment, gate, report, results
 from benchmarks.matrix import SUITES, Cell
 from benchmarks.measure import Policy
 from benchmarks.runner import run_suite, worker
@@ -84,10 +84,38 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     commands.add_parser("worker", help="internal: one run, request on stdin, records on stdout")
 
+    adapters_cmd = commands.add_parser("adapters", help="characterise an adapter on a downloaded real recording")
+    adapters_cmd.add_argument("--recording", required=True, help="a name from tests.recordings")
+    adapters_cmd.add_argument("--out", type=Path, required=True)
+    adapters_cmd.add_argument("--runs", type=int, default=5)
+    adapters_cmd.add_argument("--kernel", default="event_count")
+    adapters_cmd.add_argument("--interval", type=float, default=16.0, help="snapshot interval, ms")
+    adapters_report_cmd = commands.add_parser("adapters-report", help="tabulate an adapter characterisation document")
+    adapters_report_cmd.add_argument("result", type=Path)
+    commands.add_parser("adapters-worker", help="internal: one adapter run, request on stdin, record on stdout")
+
     args = parser.parse_args(argv)
 
     if args.command == "worker":
         json.dump(worker(json.load(sys.stdin)), sys.stdout)
+        return 0
+
+    if args.command == "adapters-worker":
+        json.dump(adapters.worker(json.load(sys.stdin)), sys.stdout)
+        return 0
+
+    if args.command == "adapters":
+        if args.out.exists():
+            parser.error(f"{args.out} exists; refusing to overwrite a result")
+        document = adapters.run(args.recording, runs=args.runs, kernel=args.kernel, interval_ms=args.interval)
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(document, indent=1) + "\n")
+        print(adapters.report(document))
+        print(f"wrote {args.out}")
+        return 0
+
+    if args.command == "adapters-report":
+        print(adapters.report(json.loads(args.result.read_text())))
         return 0
 
     if args.command == "list":
