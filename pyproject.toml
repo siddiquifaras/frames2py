@@ -41,6 +41,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+evt = []
 viewer-opencv = ["opencv-python>=4.8"]
 all = [
     "opencv-python>=4.8",

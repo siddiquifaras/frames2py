@@ -59,3 +59,24 @@ def make_events():
         return events
 
     return _make
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--recordings",
+        action="store_true",
+        help="run the opt-in tests on real recordings (fetch them with: uv run python -m tests.recordings download)",
+    )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line("markers", "recordings: needs downloaded real recordings; runs only with --recordings")
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if config.getoption("--recordings"):
+        return
+    skip = pytest.mark.skip(reason="opt-in real-recording test: pass --recordings")
+    for item in items:
+        if "recordings" in item.keywords:
+            item.add_marker(skip)

@@ -110,7 +110,7 @@ requires-dist = [
     { name = "opencv-python", marker = "extra == 'all'", specifier = ">=4.8" },
     { name = "opencv-python", marker = "extra == 'viewer-opencv'", specifier = ">=4.8" },
 ]
-provides-extras = ["viewer-opencv", "all"]
+provides-extras = ["evt", "viewer-opencv", "all"]
 
 [package.metadata.requires-dev]
 dev = [
