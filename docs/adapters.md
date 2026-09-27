@@ -188,6 +188,50 @@ provides; read the RAW file with `evt` instead.
 Errors in the file's body surface when iteration reaches them, so earlier batches have
 already been yielded.
 
+## What decoding costs
+
+Measured on one machine, for these recordings only; read the figures as that, not as a
+promise for other files or hardware. Apple M4 (4 performance + 6 efficiency cores), 16 GiB,
+macOS 15.7.7, mains power, Low Power Mode off, no other heavy work running; CPython 3.11.14
+with NumPy 2.4.6, and CPython 3.14.2 free-threaded with the GIL disabled and NumPy 2.5.3;
+dv-processing 2.0.4, h5py 3.16.0 (HDF5 2.0.0), hdf5plugin 7.1.0. Files read from the page
+cache. Method (`benchmarks/adapters.py`): 5 runs, each a separate process, medians; decode
+is `open()` plus iteration over every batch with the reader's own boundaries (EVT reads
+1 MiB at a time); ingest is `Engine(..., "event_count")` at the default 16 ms interval,
+fed the decoded batches back to back; end to end is the adapter feeding the Engine.
+Reproduce with `uv run python -m benchmarks adapters --recording NAME --out FILE`.
+
+Decode rate in millions of events per second, and how many times faster than the
+recording's own duration that is:
+
+| recording | events | 3.11.14 decode | real time | 3.14.2t decode | real time |
+|---|---|---|---|---|---|
+| `sparklers.raw` (EVT 2.0) | 521,252 | 121.8 | 22x | 124.8 | 23x |
+| `200_jets_at_200hz.raw` (EVT 2.0) | 407,365 | 36.8 | 163x | 67.7 | 300x |
+| `faery_evt3.raw` (EVT 3.0) | 1,218,618 | 18.3 | 161x | 17.2 | 152x |
+| `active_marker.raw` (EVT 3.0) | 22,316,758 | 20.7 | 29x | 19.8 | 28x |
+| `dvp_sample_data.aedat4` | 9,193 | 5.8 | 2,390x | 5.3 | 2,212x |
+| `dvp_test-minimal.aedat4` | 255,283 | 54.9 | 581x | 51.9 | 549x |
+| `faery_davis346.aedat4` | 78,830 | 25.3 | 757x | 23.0 | 688x |
+| `dsec_thun_01_a_events_left.h5` | 131,482,728 | 88.5 | 6.6x | 87.5 | 6.5x |
+
+What this shows:
+
+- Decoding costs more than ingesting. With `event_count`, the Engine ingested the decoded
+  EVT and HDF5 batches at 207 to 281 M events/s, so the adapter took 64 to 94% of the
+  end-to-end time (92 to 94% for EVT 3.0).
+- EVT 3.0 decodes at about 17 to 21 M events/s here, which kept up with both recordings by a
+  factor of 28 or more.
+- Files of one format decode at very different rates (EVT 2.0: 37 to 125 M events/s), and
+  `200_jets_at_200hz.raw` decoded 1.8x faster on 3.14.2t than on 3.11.14. Neither was
+  investigated; the causes are not known.
+- AEDAT 4.0 files come in small packets (a median of 36, 330 and 944 events in the three
+  files), and each packet is one array. Ingesting arrays that small is dominated by the
+  Engine's per-call cost: 9 to 98 M events/s. With `batch_size=10_000`, the same events
+  ingested at 58 to 197 M events/s. Pass a `batch_size` when a file's packets are small.
+- Peak memory seen by `tracemalloc` while decoding: at most 17 MiB for the EVT files and
+  35 MiB for the DSEC file.
+
 ## Cameras
 
 There is no live-camera adapter. dv-processing can also read iniVation cameras, but that
