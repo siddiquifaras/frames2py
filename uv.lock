@@ -81,6 +81,48 @@ wheels = [
 ]
 
 [[package]]
+name = "dv-processing"
+version = "2.0.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/75/d9/f1348f04bba02f7912cff3526c43047f8e38d40c77c1f282e688d7efe328/dv_processing-2.0.4.tar.gz", hash = "sha256:f327d4e4c2cb77f92eb613b23d616ec9db53dad2a407c8fb62d4f0eaf8fc1c39", size = 9515, upload-time = "2026-07-30T16:03:34.378Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9a/f0/fa793f184f5075dcd2165e3e78c7e5b78af9d6fe2b2d884e8314ef173554/dv_processing-2.0.4-cp311-cp311-macosx_15_0_arm64.whl", hash = "sha256:96cc727a84c57408e296efa1503b816654f6937d9f177bdbf81d0f6db3c124f0", size = 83592215, upload-time = "2026-07-30T18:47:12.595Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/fb/cd8ed499c5be4853ea4576577e6fc3635899420a4462f6754ff4fca237e6/dv_processing-2.0.4-cp311-cp311-macosx_15_0_x86_64.whl", hash = "sha256:5a760536935c8511189198c4fbf39e21cebf6a8ca9aa58f70b758a7681b86e28", size = 109548161, upload-time = "2026-07-30T18:05:17.121Z" },
+    { url = "https://files.pythonhosted.org/packages/55/dd/8fb7c8734b1f1c64a77448792d83bb35d5f42dbd75b345e9738671e7fb03/dv_processing-2.0.4-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:6e706ec099cececeac3f29cf84ce6ff1309e4435fb23792aef841aacebd1557e", size = 9722972, upload-time = "2026-07-30T16:20:51.911Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/46/0f0b6ba57a371e72bc3cf9778403cc107627e926c075b25399628fad4428/dv_processing-2.0.4-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:3b3e81fa11c774db97a477901d3f7c0a52d2168bca663737f1fccdb364f5cecd", size = 24255161, upload-time = "2026-07-30T16:03:06.783Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/d9/ced8203629e792542a737bb4183d7a21a589f4e6aa6d273ffdd73e9d8101/dv_processing-2.0.4-cp311-cp311-win32.whl", hash = "sha256:75ca8ad10804feaac03b5f187a75ddfb88f77738b1685681b781cb88582ce752", size = 25349335, upload-time = "2026-07-30T16:56:27.856Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/a3/a111ac95296c14c44df6d10179efdfd6f9a64806f9011611396a08daac73/dv_processing-2.0.4-cp311-cp311-win_amd64.whl", hash = "sha256:87a553ec7dddab9e84d412b148e6172472c7f70538032c8b3234a6796ce04845", size = 41103801, upload-time = "2026-07-30T16:26:40.409Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/1f/336bb0c5d34d601c8e93e7abae55c55042e707bd0f5816322da83d63c9e2/dv_processing-2.0.4-cp312-cp312-macosx_15_0_arm64.whl", hash = "sha256:3d94747d8b7ccfd5f5a19db84f81c1f7360d2fd53cc30f18532feb090a1a1477", size = 83599997, upload-time = "2026-07-30T18:47:33.305Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/d4/494642749a786c6a8981686c52f6bcc5847088157e8ab135cbe5a29d6d6c/dv_processing-2.0.4-cp312-cp312-macosx_15_0_x86_64.whl", hash = "sha256:961f65a8ad81461f90384d61414a438fbfa66dcc1456694ad4d60444f85e4b9e", size = 109589024, upload-time = "2026-07-30T18:05:41.17Z" },
+    { url = "https://files.pythonhosted.org/packages/29/78/cb0f62e6154630bdc1a6d052e4c04e0821bacd43ff88cf0e0261c533a214/dv_processing-2.0.4-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:fc7f48f44287efb5d51868b2266ead7c60f0919a56195cc6f4f58a353fb162c6", size = 9720552, upload-time = "2026-07-30T16:20:55.81Z" },
+    { url = "https://files.pythonhosted.org/packages/be/17/a5bd4af2db0a00c8cbeae69b9794955bba6dd7c0be88016f5d9030ce44a3/dv_processing-2.0.4-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:ed56fec329f7446147a7367fa706f82b110fdab13376c93a24d51baa80b02497", size = 24253280, upload-time = "2026-07-30T16:03:11.779Z" },
+    { url = "https://files.pythonhosted.org/packages/81/07/3dfef09b9099d7f557793c7ac375b6f5890606b209637351d918fcdda32a/dv_processing-2.0.4-cp312-cp312-win32.whl", hash = "sha256:bfe52b841fa8f9348a896bb7f7d29d805c9642becc05dea9eef0f5099935b2b4", size = 25357599, upload-time = "2026-07-30T16:56:35.271Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/76/623095dab1148156b2591aa8b49483b028e25a2200955eb17af894035e9c/dv_processing-2.0.4-cp312-cp312-win_amd64.whl", hash = "sha256:6d5341283db775ef357d752d6386e5aa18d153bb3ee6c21385c64e24448c418f", size = 41104782, upload-time = "2026-07-30T16:26:51.732Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/c7/ea5698309120aaec7984561a449c494c54b601bbd7dcae7ab8ceb5bd0a39/dv_processing-2.0.4-cp313-cp313-macosx_15_0_arm64.whl", hash = "sha256:b46d4bb5f36fe152960b98ba79eb66ced0714c4a7a430e3e24565b1df1e927a6", size = 83600068, upload-time = "2026-07-30T18:47:57.884Z" },
+    { url = "https://files.pythonhosted.org/packages/ca/50/580c5a5c2fea26d48154e19379c8f15798ba96e7804bf3be2ab126f40b72/dv_processing-2.0.4-cp313-cp313-macosx_15_0_x86_64.whl", hash = "sha256:07f9ada0364f12e39da5cca9583e39a190fef9c7414d07f9ae407fa3a5ca197b", size = 109589120, upload-time = "2026-07-30T18:06:04.473Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/f5/67e5d6d1a082e912ca13b6aa6536db016ccf3122a9aa34b246f00d0558ba/dv_processing-2.0.4-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:7394e3df13f3cb9c57e3e6ba8cd4aa270cc18b1b6077214414ad819d6e5bd147", size = 9720424, upload-time = "2026-07-30T16:20:59.368Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/5a/47a9f4fa32bb03c92c6fe58f09264ff4c25d26a3ff890b842133cb652407/dv_processing-2.0.4-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:1886b4c5427ecb15fd5b8ccf1a831c07e47c2a5ab754b73331fcd49d6be76e49", size = 24253332, upload-time = "2026-07-30T16:03:16.849Z" },
+    { url = "https://files.pythonhosted.org/packages/12/9c/dd0ab20a998e543d1cf633eb2b1836d16c87e56d573c76508aba69f53a19/dv_processing-2.0.4-cp313-cp313-win32.whl", hash = "sha256:d5ce2b00c035bfe6ce072d51064d140680f5e2d03c6b8b89c2bd5f37bfaa98e4", size = 25357569, upload-time = "2026-07-30T16:56:43.367Z" },
+    { url = "https://files.pythonhosted.org/packages/63/79/29bab966fdedab0cccf71ec99f237fbaeed92af1b2df396e214e698384ca/dv_processing-2.0.4-cp313-cp313-win_amd64.whl", hash = "sha256:8b80e4c7be399c80ed5254bb428aea58ce356e8777c512e38ca333d42501cf8c", size = 41104760, upload-time = "2026-07-30T16:27:02.38Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/8c/1fc7e3d47c8241ae927a3510da1ae2dd680ae63f8f6d89d61fd9eaea4884/dv_processing-2.0.4-cp314-cp314-macosx_15_0_arm64.whl", hash = "sha256:6ac5e9ad4208455019f6751123d65071005b11034f7876610c31b8aaddcea743", size = 83606401, upload-time = "2026-07-30T18:48:30.717Z" },
+    { url = "https://files.pythonhosted.org/packages/26/56/e593d391483ab11dd1aaab01d6a8bdf069e1478ff3254a7aac1b9daeb20d/dv_processing-2.0.4-cp314-cp314-macosx_15_0_x86_64.whl", hash = "sha256:816eb1a91158228a5d1b5d799bc09325d595b0f8b8ecb6f8da4a8860c91157a9", size = 109592153, upload-time = "2026-07-30T18:06:19.521Z" },
+    { url = "https://files.pythonhosted.org/packages/97/80/2b1e87259586df5eeb293db5efb919aeeaf494f18f52bc4abdf7f1de5612/dv_processing-2.0.4-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:5979a67c5ec6c077e4de0490b6f3583d5a409eb37ee6d7553e86a9c455be0971", size = 9726014, upload-time = "2026-07-30T16:21:02.695Z" },
+    { url = "https://files.pythonhosted.org/packages/60/f3/60d82a965a744bcfa95844aed408ac92ecae3bd078c3a3d3e5eeff55489f/dv_processing-2.0.4-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:e45f5c97c1704f92d73a90b486b642a6c0b9aa022dcb5e0f55e3ba8afdc67115", size = 24257195, upload-time = "2026-07-30T16:03:21.576Z" },
+    { url = "https://files.pythonhosted.org/packages/df/98/2a5984eac72395dde9843b52deae897ccc6a843d517c94232f5f99e67e29/dv_processing-2.0.4-cp314-cp314-win32.whl", hash = "sha256:9a2240536165579f560123918510eb0e17d6cfab9997f1323f6faea141ba8b25", size = 25968399, upload-time = "2026-07-30T16:56:58.898Z" },
+    { url = "https://files.pythonhosted.org/packages/e9/be/615f14411f7f12b1092bb74f7b103da11b295b8539d979dfd920a0582f8c/dv_processing-2.0.4-cp314-cp314-win_amd64.whl", hash = "sha256:0a102f78c956c9ce88532465aa266ac570709f68877955df7d57c7e8f1bbfe6c", size = 42188439, upload-time = "2026-07-30T16:27:26.583Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/b6/49c61ddaaac936e2c9f4baea5f736bec01b0fbd9bba14008f702a1b6abbf/dv_processing-2.0.4-cp314-cp314t-macosx_15_0_arm64.whl", hash = "sha256:b022c3d1d20fd4085f8d4b430ee70a2c62c14b61e61c2a6532b33b5fba334cb5", size = 83731900, upload-time = "2026-07-30T18:48:52.347Z" },
+    { url = "https://files.pythonhosted.org/packages/59/3a/84927978e401957c37408cd9e4b44341d05e0c3ce465c9e23c403c5f658e/dv_processing-2.0.4-cp314-cp314t-macosx_15_0_x86_64.whl", hash = "sha256:ab555001a97cd00578c9aff956ae865f3eb6322418c9d5b7cf6852536ba6b8d9", size = 109679692, upload-time = "2026-07-30T18:06:42.263Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/68/a27577c069f1c40ef16a78e481d0af4f4bf3ff858b4fe41f99b58c9258a7/dv_processing-2.0.4-cp314-cp314t-manylinux_2_28_aarch64.whl", hash = "sha256:628c524beb5a6fcef7a196b50e8ac4f35bb40dd7cce7f860b75e61bd4456e968", size = 9738642, upload-time = "2026-07-30T16:21:06.153Z" },
+    { url = "https://files.pythonhosted.org/packages/de/26/110b07f0d285ac8bd5a50bf724c706008c2902d40c02fc9a892819777718/dv_processing-2.0.4-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:eb7a9087fbbed736a7df5866912f3cc6ff413676e858e0e155d6a05f336c67ff", size = 24274987, upload-time = "2026-07-30T16:03:26.568Z" },
+    { url = "https://files.pythonhosted.org/packages/6f/e0/54cc048707a9bc37c0e3adbc7bcee242b163703c11897ddb5e363e3e08c8/dv_processing-2.0.4-cp314-cp314t-win32.whl", hash = "sha256:2b97123f6a8bf7b5b0be54bb5d522860da010399907b32acd0ebcaaa5af29ba6", size = 26054948, upload-time = "2026-07-30T16:56:51.268Z" },
+    { url = "https://files.pythonhosted.org/packages/8f/1a/dd007ad32a4c030b103b4b19ab59319f10c2b67e95d489335dabfd64ac69/dv_processing-2.0.4-cp314-cp314t-win_amd64.whl", hash = "sha256:8208403ee4cd1d0023f6572f91b69055c4130948bcd32b1c778ae03e9a4b6c03", size = 42341356, upload-time = "2026-07-30T16:27:15.071Z" },
+]
+
+[[package]]
 name = "frames2py"
 version = "0.1.0"
 source = { editable = "." }
@@ -90,6 +132,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+aedat4 = [
+    { name = "dv-processing" },
+]
 all = [
     { name = "opencv-python" },
 ]
@@ -106,11 +151,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "dv-processing", marker = "extra == 'aedat4'", specifier = ">=2.0.4" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "opencv-python", marker = "extra == 'all'", specifier = ">=4.8" },
     { name = "opencv-python", marker = "extra == 'viewer-opencv'", specifier = ">=4.8" },
 ]
-provides-extras = ["evt", "viewer-opencv", "all"]
+provides-extras = ["evt", "aedat4", "viewer-opencv", "all"]
 
 [package.metadata.requires-dev]
 dev = [

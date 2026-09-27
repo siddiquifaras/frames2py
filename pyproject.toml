@@ -42,6 +42,7 @@ dependencies = [
 
 [project.optional-dependencies]
 evt = []
+aedat4 = ["dv-processing>=2.0.4"]
 viewer-opencv = ["opencv-python>=4.8"]
 all = [
     "opencv-python>=4.8",

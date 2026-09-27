@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 
 from tests.adapters import evt_words as w
+from tests.adapters.backends import require_backend
 
 
 @dataclasses.dataclass(frozen=True)
@@ -50,7 +51,18 @@ def _evt2(directory: Path) -> Written:
     return Written(evt.open, path, w.reference_decode(data, "2.0"))
 
 
+def _aedat4(directory: Path) -> Written:
+    require_backend("dv_processing")
+    from frames2py.adapters import aedat4
+    from tests.adapters import aedat4_files
+
+    packets = [[(1_000 + 10 * k + i, (7 * k + i) % 640, (3 * k) % 480, (k + i) % 2) for i in range(k % 5 + 1)] for k in range(20)]
+    path = aedat4_files.write(directory / "case.aedat4", {"events": packets})
+    return Written(aedat4.open, path, w.events([e for packet in packets for e in packet]))
+
+
 CASES: dict[str, Callable[[Path], Written]] = {
+    "aedat4": _aedat4,
     "evt2": _evt2,
     "evt3": _evt3,
 }

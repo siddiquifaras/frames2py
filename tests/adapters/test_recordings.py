@@ -2,7 +2,7 @@
 
 The recordings are downloaded and hash-checked by ``tests.recordings``; a missing one fails
 the test. Expected values come from decoders other than Frames2Py's: OpenEB 5.2.0's default
-RAW path for EVT (as ``EVENT_DTYPE`` bytes).
+RAW path for EVT and faery 0.7 for AEDAT4, as ``EVENT_DTYPE`` bytes.
 """
 
 from __future__ import annotations
@@ -116,3 +116,33 @@ class TestEvtRecordings:
         expected[pixel[order][last]] = events["t"][order][last]
         np.testing.assert_array_equal(surface.read().ravel(), expected)
         assert counts.watermark == int(events["t"].max())
+
+
+# name: (geometry, count, faery SHA-256, t range)
+AEDAT4 = {
+    "dvp_test-minimal.aedat4": ((640, 480), 255_283,
+                                "96d4b0d0ac66c379cdf4cb6aa8a97354fa64e8c265c9f308bc6a055f8e5d762d",
+                                (1_631_717_221_674_515, 1_631_717_224_374_502)),
+    "dvp_sample_data.aedat4": ((346, 260), 9_193,
+                               "d238dfa46833b6806083c3459e464d122ebc1142785e94f7d09d76e3e4a44fe6",
+                               (1_663_249_605_734_020, 1_663_249_609_547_839)),
+    "faery_davis346.aedat4": ((346, 260), 78_830,
+                              "2154b09ad3de1af1a897724baee61d587d8868e2aaad49632f6985c8f9a3f6b9",
+                              (1_589_163_147_368_868, 1_589_163_149_728_813)),
+}
+
+
+@pytest.mark.parametrize("name", sorted(AEDAT4))
+class TestAedat4Recordings:
+    @pytest.mark.parametrize("batch_size", [None, 1000, 1_000_000])
+    def test_decode_matches_faery(self, name: str, batch_size: int | None) -> None:
+        from tests.adapters.backends import require_backend
+
+        require_backend("dv_processing")
+        from frames2py.adapters import aedat4
+
+        geometry, count, sha, t_range = AEDAT4[name]
+        with aedat4.open(local(name), batch_size=batch_size) as reader:
+            assert reader.sensor_size == geometry
+            stats = digest_and_stats(iter(reader))
+        assert (stats["count"], stats["sha256"], stats["t"]) == (count, sha, t_range)

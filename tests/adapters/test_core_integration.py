@@ -17,6 +17,7 @@ import pytest
 
 from frames2py import Accumulator, Engine
 from tests.adapters import evt_words as w
+from tests.adapters.backends import require_backend
 from tests.oracle import ReferenceAccumulator
 
 DATA = Path(__file__).resolve().parent.parent / "data"
@@ -38,7 +39,19 @@ def _evt(name: str, count: int, **kwargs: Any) -> Fixture:
     return Fixture(opener, count)
 
 
+def _aedat4() -> Fixture:
+    require_backend("dv_processing")
+
+    def opener() -> Any:
+        from frames2py.adapters import aedat4
+
+        return aedat4.open(DATA / "sparklers_100k.aedat4")
+
+    return Fixture(opener, 100_000)
+
+
 FIXTURES: dict[str, Callable[[], Fixture]] = {
+    "aedat4-sparklers": _aedat4,
     "evt2-sparklers": lambda: _evt("sparklers_100k.evt2.raw", 100_000, sensor_size=(640, 480)),
     "evt3-active-marker": lambda: _evt("active_marker_head.evt3.raw", 46_893),
 }

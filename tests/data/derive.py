@@ -54,9 +54,37 @@ def evt3_excerpt() -> bytes:
     return data[: split_header(data) + EVT3_BODY_BYTES]
 
 
+def sparklers_events() -> np.ndarray:
+    """The events of ``sparklers_100k.evt2.raw``, decoded by the EVT adapter."""
+    from frames2py.adapters import evt
+
+    with evt.open(HERE / "sparklers_100k.evt2.raw", sensor_size=(640, 480)) as reader:
+        return np.concatenate(list(reader))
+
+
+def aedat4_rewrite() -> bytes:
+    """The sparklers excerpt's events written by dv-processing's ``MonoCameraWriter``
+    (event-only configuration, camera ``sparklers_cc0_derived``, 640x480, default settings)."""
+    import dv_processing as dv
+
+    events = sparklers_events()
+    store = dv.EventStore()
+    for t, x, y, p in zip(events["t"].tolist(), events["x"].tolist(), events["y"].tolist(), events["p"].tolist()):
+        store.push_back(t, x, y, bool(p))
+    target = HERE / "aedat4_rewrite.tmp.aedat4"
+    writer = dv.io.MonoCameraWriter(str(target), dv.io.MonoCameraWriter.EventOnlyConfig("sparklers_cc0_derived", (640, 480)))
+    writer.writeEvents(store)
+    del writer
+    try:
+        return target.read_bytes()
+    finally:
+        target.unlink()
+
+
 FIXTURES: Final[dict[str, Callable[[], bytes]]] = {
     "sparklers_100k.evt2.raw": evt2_excerpt,
     "active_marker_head.evt3.raw": evt3_excerpt,
+    "sparklers_100k.aedat4": aedat4_rewrite,
 }
 
 
