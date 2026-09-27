@@ -150,7 +150,8 @@ def run_suite(
 
     The whole run happens inside ``power.hold_awake()``: on macOS it refuses to start
     outside full wake and holds its own idle-sleep assertion until the run ends. The
-    document's ``power`` record says whether the machine slept during the run.
+    document's ``power`` record says whether the machine slept during the run and
+    whether it was still in full wake at the end.
     """
     if process_per_run and TARGETS.get(target.name) is None:
         raise ValueError(f"target {target.name!r} is not registered; can't run it in a subprocess")
@@ -168,6 +169,10 @@ def run_suite(
         env_end = environment.capture()
     if power.slept_during(power_record):
         progress(f"WARNING: the machine slept for {power_record['slept_ns'] / 1e9:.1f} s during this run; "
+                 "the gate treats its cells as invalid")
+    if power.ended_outside_full_wake(power_record):
+        progress("WARNING: this run ended outside full wake "
+                 f"(system capabilities {power_record['end'].get('system_capabilities')!r}); "
                  "the gate treats its cells as invalid")
 
     per_cell = {cell: [run[i] for run in runs] for i, cell in enumerate(supported)}

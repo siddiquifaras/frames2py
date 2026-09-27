@@ -717,6 +717,34 @@ class TestPowerGuard:
         del kernel["power"]  # documents from before power records keep their classification
         assert all(r["result"] == "pass" for r in gate.level_results(kernel).values())
 
+    def test_full_wake_at_start_and_end_keeps_the_classification(self) -> None:
+        kernel, _ = _gate_documents()
+        _set_rates(kernel, {c.condition: _uniform(30e6) for c in gate_cells()})
+        with power.hold_awake(backend=_FakeMac(0x1F), platform="darwin") as record:
+            pass
+        assert record["slept"] is False and not power.ended_outside_full_wake(record)
+        kernel["power"] = record
+        assert all(r["result"] == "pass" for r in gate.level_results(kernel).values())
+
+    def test_ending_in_darkwake_voids_gate_cells_without_any_recorded_sleep(self) -> None:
+        kernel, _ = _gate_documents()
+        _set_rates(kernel, {c.condition: _uniform(30e6) for c in gate_cells()})
+        backend = _FakeMac(0x1F)
+        with power.hold_awake(backend=backend, platform="darwin") as record:
+            backend.caps = 0x9  # DarkWake: CPU without graphics
+        assert record["slept"] is False and power.ended_outside_full_wake(record)
+        kernel["power"] = record
+        assert all(r["result"] == "invalid" for r in gate.level_results(kernel).values())
+        assert any("ended outside full wake" in reason for reason in gate.problems(kernel["cells"][0], kernel, 5))
+
+    def test_platforms_without_a_wake_state_keep_the_classification(self) -> None:
+        kernel, _ = _gate_documents()
+        _set_rates(kernel, {c.condition: _uniform(30e6) for c in gate_cells()})
+        with power.hold_awake(platform="linux") as record:
+            pass
+        kernel["power"] = record
+        assert all(r["result"] == "pass" for r in gate.level_results(kernel).values())
+
     @pytest.mark.skipif(sys.platform != "darwin", reason="IOKit power assertions are macOS only")
     def test_real_assertion_is_held_and_released(self) -> None:
         backend = power.MacBackend()

@@ -17,8 +17,9 @@ Per level (kernel, engine) and cell:
   - ``not_met``: otherwise
 - ``invalid``: a run's result checks failed, a run was not on the document's
   runtime, the runs did not see identical input, the run count is wrong, or the
-  document's power record shows the machine slept during the run (documents from
-  before power records existed have none and are not affected).
+  document's power record shows the machine slept during the run or ended outside
+  full wake (documents from before power records existed have none and are not
+  affected).
 
 The band is uncertainty around the requirement, not a different requirement.
 
@@ -83,6 +84,9 @@ def problems(record: Mapping[str, Any], document: Mapping[str, Any], runs: int) 
         found.append("runs did not see identical input")
     if power.slept_during(document.get("power")):
         found.append(f"the machine slept for {document['power']['slept_ns'] / 1e9:.1f} s during the run")
+    if power.ended_outside_full_wake(document.get("power")):
+        caps = document["power"]["end"].get("system_capabilities")
+        found.append(f"the run ended outside full wake (system capabilities {caps!r})")
     return found
 
 

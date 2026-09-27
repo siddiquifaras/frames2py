@@ -260,3 +260,13 @@ def slept_during(record: dict[str, Any] | None) -> bool:
     """Whether a run's power record shows the machine slept during it."""
     return bool(record and record.get("slept"))
 
+
+def ended_outside_full_wake(record: dict[str, Any] | None) -> bool:
+    """Whether a run's power record shows it ended outside full wake, for example in DarkWake.
+
+    A run can start in full wake and fall into DarkWake without the sleep clock seeing any
+    sleep, so this is checked separately from ``slept_during``. Records without an end state,
+    or from platforms that don't report one, return False.
+    """
+    end = (record or {}).get("end") or {}
+    return end.get("full_wake") is False
