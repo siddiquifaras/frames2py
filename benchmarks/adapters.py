@@ -16,7 +16,7 @@ Method, per recording. Each run is a separate Python process; inside it, in this
 6. ``end_to_end``: the adapter feeding ``Engine.ingest()`` batch by batch, then ``stop()``.
 
 Timed passes run with the garbage collector disabled; each is one ``perf_counter_ns``
-interval. The reader uses its defaults (``batch_size=None``). The Engine uses the chosen
+interval. The reader uses ``batch_size=None`` (its own boundaries) unless one is given. The Engine uses the chosen
 kernel and interval against the real clock, so publications follow wall time. The last run
 adds an untimed ``tracemalloc`` pass of the adapter alone (peak traced bytes).
 
@@ -174,7 +174,7 @@ def worker(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def run(name: str, *, runs: int = 5, kernel: str = "event_count", interval_ms: float = 16.0,
-        process_per_run: bool = True, path: Path | None = None, adapter: str | None = None,
+        batch_size: int | None = None, process_per_run: bool = True, path: Path | None = None, adapter: str | None = None,
         open_kwargs: dict[str, Any] | None = None, expected_events: int | None = None) -> dict[str, Any]:
     """Measure a registered recording (or, for tests, any file given by *path* and *adapter*)."""
     from tests import recordings
@@ -188,6 +188,8 @@ def run(name: str, *, runs: int = 5, kernel: str = "event_count", interval_ms: f
     else:
         source = {"name": name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
     assert adapter is not None and open_kwargs is not None
+    if batch_size is not None:
+        open_kwargs = {**open_kwargs, "batch_size": batch_size}
     records = []
     with power.hold_awake(f"frames2py adapter benchmark {name}") as power_record:
         env = environment.capture()

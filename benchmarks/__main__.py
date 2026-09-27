@@ -90,6 +90,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     adapters_cmd.add_argument("--runs", type=int, default=5)
     adapters_cmd.add_argument("--kernel", default="event_count")
     adapters_cmd.add_argument("--interval", type=float, default=16.0, help="snapshot interval, ms")
+    adapters_cmd.add_argument("--batch-size", type=int, default=None, help="the reader's batch_size (default: None)")
     adapters_report_cmd = commands.add_parser("adapters-report", help="tabulate an adapter characterisation document")
     adapters_report_cmd.add_argument("result", type=Path)
     commands.add_parser("adapters-worker", help="internal: one adapter run, request on stdin, record on stdout")
@@ -107,7 +108,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "adapters":
         if args.out.exists():
             parser.error(f"{args.out} exists; refusing to overwrite a result")
-        document = adapters.run(args.recording, runs=args.runs, kernel=args.kernel, interval_ms=args.interval)
+        document = adapters.run(args.recording, runs=args.runs, kernel=args.kernel, interval_ms=args.interval,
+                                batch_size=args.batch_size)
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(document, indent=1) + "\n")
         print(adapters.report(document))

@@ -838,3 +838,11 @@ class TestAdapterCharacterisation:
         document = adapters.run("active_marker_head", runs=1, process_per_run=False, path=fixture, adapter="evt",
                                 open_kwargs={}, expected_events=1)
         assert document["valid"] is False and "INVALID" in adapters.report(document)
+
+    def test_batch_size_reaches_the_reader(self) -> None:
+        from benchmarks import adapters
+
+        fixture = Path(__file__).resolve().parent / "data" / "active_marker_head.evt3.raw"
+        document = adapters.run("active_marker_head", runs=1, process_per_run=False, path=fixture, adapter="evt",
+                                open_kwargs={}, expected_events=46_893, batch_size=10_000)
+        assert document["open_kwargs"]["batch_size"] == 10_000 and document["valid"]
