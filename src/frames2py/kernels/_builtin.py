@@ -249,6 +249,9 @@ class TimestampDecay:
 
     def __init__(self, tau_us: float) -> None:
         self._tau_us = _positive_real(tau_us, "tau_us")
+        # accumulate() divides timestamp differences, at worst -2**63 as float64, by tau.
+        # Only a tau below about 5.1e-290 can overflow that division.
+        self._exponent_can_overflow = math.isinf(2.0**63 / self._tau_us)
 
     def output_spec(self, sensor_size: tuple[int, int]) -> Spec:
         return _hw(sensor_size), np.dtype(np.float32)
@@ -272,8 +275,15 @@ class TimestampDecay:
             state.reference = watermark
         since = events["t"].astype(np.int64)
         np.subtract(since, np.int64(state.reference), out=since)
-        weights = np.exp(since / self._tau_us)
-        np.add.at(state.stored, _flat_index(events, state.width), weights)
+        if self._exponent_can_overflow:
+            # An event far older than the reference overflows to -inf, whose exp is 0, the
+            # true value in float64. Nothing overflows upwards: after the rebase check,
+            # since / tau <= 665.
+            with np.errstate(over="ignore"):
+                exponent = since / self._tau_us
+        else:
+            exponent = since / self._tau_us
+        np.add.at(state.stored, _flat_index(events, state.width), np.exp(exponent))
 
     def read(self, state: _TimestampDecay, out: NDArray[Any], watermark: int | None) -> None:
         if watermark is None or state.reference is None:

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import sys
+import warnings
 from typing import Any
 
 import numpy as np
@@ -22,6 +24,9 @@ from tests.contract.helpers import (
 from tests.oracle import ReferenceAccumulator
 
 SLOW = os.environ.get("FRAMES2PY_SLOW_TESTS") == "1"
+
+_OVERFLOW_EDGE = 2.0**63 / sys.float_info.max
+"""Below this tau, a timestamp difference of 2**63 divided by tau exceeds float64's range."""
 
 
 def _one_pixel(n: int, t0: int = 0, p: int = 1) -> np.ndarray:
@@ -241,6 +246,22 @@ class TestTimestampDecay:
         acc, oracle = self._pair(tau=1.0)
         self._feed(acc, oracle, events((0, 1, 1, 0), (1_000, 2, 1, 0), (999, 2, 1, 1)))
         assert_matches(acc.read(), oracle)
+
+    @pytest.mark.parametrize(
+        "tau", [5e-324, 1e-300, _OVERFLOW_EDGE * (1 - 2**-40), _OVERFLOW_EDGE * (1 + 2**-40), 1e-280]
+    )
+    def test_tiny_tau_across_the_whole_timestamp_range(self, tau: float) -> None:
+        # The oracle can't evaluate these: every event older than the watermark contributes
+        # 0, each event at the watermark 1. No warning, so none can raise mid-call.
+        acc = impl.Accumulator(SENSOR, impl.TimestampDecay(tau))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            acc.accumulate(events((0, 1, 1, 0), (2**63 - 1, 2, 1, 0)))
+            acc.accumulate(events((5, 3, 1, 0), (2**63 - 1, 2, 1, 1)))
+            frame = acc.read()
+        expected = np.zeros_like(frame)
+        expected[1, 2] = 2.0
+        np.testing.assert_array_equal(frame, expected)
 
     def test_extreme_timestamp_then_ordinary_ones(self) -> None:
         acc, oracle = self._pair()
