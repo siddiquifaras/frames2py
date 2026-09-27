@@ -27,6 +27,9 @@ pip install "frames2py[hdf5]"     # HDF5, pulls in h5py and hdf5plugin
 `import frames2py` never imports an adapter or its backend. Opening a file without the
 backend installed raises `ImportError` naming the extra to install.
 
+On Linux, dv-processing 2.0.4's wheels load the system's `libatomic.so.1`, which minimal
+images leave out: on Debian or Ubuntu, `apt install libatomic1`.
+
 ## Use
 
 ```python
