@@ -37,7 +37,12 @@ def _hw(sensor_size: tuple[int, int]) -> tuple[int, int]:
 
 
 def _real(value: object) -> float | None:
-    return float(value) if isinstance(value, numbers.Real) else None
+    if not isinstance(value, numbers.Real):
+        return None
+    try:
+        return float(value)
+    except OverflowError:  # beyond float range, e.g. 10**400: not a finite float
+        return None
 
 
 def _positive_real(value: object, name: str) -> float:

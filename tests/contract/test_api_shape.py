@@ -104,13 +104,15 @@ def test_other_names_are_rejected(name: str) -> None:
         impl.Engine(SENSOR, name)
 
 
-@pytest.mark.parametrize("tau", [0.0, -1.0, float("inf"), float("nan")])
+@pytest.mark.parametrize("tau", [0.0, -1.0, float("inf"), float("nan"), pytest.param(10**400, id="10**400")])
 def test_tau_must_be_finite_and_positive(tau: float) -> None:
     with pytest.raises(ValueError):
         impl.TimestampDecay(tau)
 
 
-@pytest.mark.parametrize("decay", [0.0, 1.0, -0.5, 1.5, float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize(
+    "decay", [0.0, 1.0, -0.5, 1.5, float("nan"), float("inf"), float("-inf"), pytest.param(10**400, id="10**400")]
+)
 def test_decay_must_be_finite_and_strictly_between_0_and_1(decay: float) -> None:
     with pytest.raises(ValueError):
         impl.ExpDecay(decay)
