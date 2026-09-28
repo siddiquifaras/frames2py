@@ -13,7 +13,8 @@ from typing import Any, Final
 
 import numpy as np
 
-from frames2py._events import EVENT_DTYPE, TIMESTAMP_LIMIT, validate
+from frames2py import EVENT_DTYPE
+from frames2py._events import TIMESTAMP_LIMIT, validate
 from frames2py.adapters.hdf5 import FORMAT_VERSION, FORMAT_VERSION_ATTRIBUTE
 
 CHUNK_EVENTS: Final = 65_536
