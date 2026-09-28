@@ -180,6 +180,9 @@ The schema is fixed; nothing is autodetected.
   more). A dataset whose mandatory filter is missing raises `ValueError` from `open()`; one
   whose optional filter is missing (Blosc is usually stored as optional) raises
   `ValueError` when iteration reaches a chunk that needs it.
+- Blosc-compressed files may decode faster with the `BLOSC_NTHREADS` environment variable
+  set. Frames2Py never sets it: it applies to the whole process, so the choice is yours. One
+  measurement is under "What decoding costs" below.
 
 DSEC's event files follow this layout (`events/{t,x,y,p}`, `t` as uint32 relative to the
 scalar `/t_offset`, Blosc compression). Prophesee's own HDF5 export does not: it stores one
@@ -215,7 +218,7 @@ cache. Method (`benchmarks/adapters.py`): 5 runs, each a separate process, media
 is `open()` plus iteration over every batch with the reader's own boundaries (EVT reads
 1 MiB at a time); ingest is `Engine(..., "event_count")` at the default 16 ms interval,
 fed the decoded batches back to back; end to end is the adapter feeding the Engine.
-Reproduce with `uv run python -m benchmarks adapters --recording NAME --out FILE`.
+Reproduce with `uv run python -m benchmarks adapters --recording NAME --out "${TMPDIR:-/tmp}/NAME.json"`.
 
 Decode rate in millions of events per second, and how many times faster than the
 recording's own duration that is:
@@ -238,15 +241,65 @@ What this shows:
   end-to-end time (92 to 94% for EVT 3.0).
 - EVT 3.0 decodes at about 17 to 21 M events/s here, which kept up with both recordings by a
   factor of 28 or more.
-- Files of one format decode at very different rates (EVT 2.0: 37 to 125 M events/s), and
-  `200_jets_at_200hz.raw` decoded 1.8x faster on 3.14.2t than on 3.11.14. Neither was
-  investigated; the causes are not known.
+- Files of one format decode at very different rates (EVT 2.0: 37 to 125 M events/s); why
+  was not investigated.
+- `200_jets_at_200hz.raw` decoded 1.8x faster on 3.14.2t than on 3.11.14, and the difference
+  followed the NumPy version. Measured again with the same command on CPython 3.11.14,
+  3.14.2 and 3.14.2t with NumPy 2.4.6, and on both 3.14 builds with NumPy 2.5.3 (NumPy 2.5.3
+  has no build for 3.11; the lockfile's NumPy is 2.4.6 on 3.11 and 2.5.3 on 3.12 and later,
+  and the other combinations were pinned by hand), it decoded at 35 to 37 M events/s with
+  NumPy 2.4.6 on all three runtimes and at 70 M events/s with NumPy 2.5.3 on both 3.14 builds.
+  The other recordings in the table changed less with NumPy 2.5.3 (7 to 15% for
+  `sparklers.raw`, 10% or less for the rest); other files were not measured.
 - AEDAT 4.0 files come in small packets (a median of 36, 330 and 944 events in the three
   files), and each packet is one array. Ingesting arrays that small is dominated by the
   Engine's per-call cost: 9 to 98 M events/s. With `batch_size=10_000`, the same events
   ingested at 58 to 197 M events/s. Pass a `batch_size` when a file's packets are small.
 - Peak memory seen by `tracemalloc` while decoding: at most 17 MiB for the EVT files and
   35 MiB for the DSEC file.
+
+**Blosc threads (HDF5).** With `BLOSC_NTHREADS` unset, decoding used no more CPU time than
+wall time. With `BLOSC_NTHREADS=4` the DSEC file decoded at 137 to 139 M events/s instead of
+89 to 93 M events/s, about 1.5x. A process that only decoded the file took 0.91 s of wall time
+instead of 1.42 s, and 1.61 s of CPU time (user plus system) instead of 1.42 s: faster, at
+more total CPU.
+
+- Environment: the machine above, CPython 3.11.14, NumPy 2.4.6, h5py 3.16.0 (HDF5 2.0.0),
+  hdf5plugin 7.1.0, file in the page cache. Not measured on 3.14.2t, with a cold cache, or on
+  other files.
+- Workload: `dsec_thun_01_a_events_left.h5`, 131,482,728 events, reader defaults.
+- Decode rate: two sets of five runs for each setting, each set's median reported. From the
+  repository root, after downloading the file:
+
+  ```sh
+  uv run --extra hdf5 python -m tests.recordings download dsec_thun_01_a_events_left.h5
+  env -u BLOSC_NTHREADS uv run --extra hdf5 python -m benchmarks adapters \
+      --recording dsec_thun_01_a_events_left.h5 --runs 5 --out "${TMPDIR:-/tmp}/blosc-unset.json"
+  BLOSC_NTHREADS=4 uv run --extra hdf5 python -m benchmarks adapters \
+      --recording dsec_thun_01_a_events_left.h5 --runs 5 --out "${TMPDIR:-/tmp}/blosc-4.json"
+  uv run python -m benchmarks adapters-report "${TMPDIR:-/tmp}/blosc-4.json"
+  ```
+
+- Wall and CPU time: median of five runs of each, alternating. `uv run` starts
+  `/usr/bin/time`, which times only the Python process:
+
+  ```sh
+  P=$(uv run --extra hdf5 python -c 'from tests import recordings; print(recordings.path("dsec_thun_01_a_events_left.h5"))')
+  CMD='from frames2py.adapters import hdf5
+  with hdf5.open("'$P'", group="events", t_offset="/t_offset", sensor_size=(640, 480)) as r:
+      n = sum(len(b) for b in r)
+  assert n == 131482728'
+  env -u BLOSC_NTHREADS uv run --extra hdf5 /usr/bin/time -p python -c "$CMD"
+  BLOSC_NTHREADS=4 uv run --extra hdf5 /usr/bin/time -p python -c "$CMD"
+  ```
+
+The figures above were measured with the project environment's interpreter called directly;
+these `uv run` commands run the same interpreter and benchmark code. One later run of these
+commands on the same machine, with the output files written elsewhere, gave 91 and
+136 M events/s, 1.43 and 0.94 s of wall time, and 1.42 and 1.68 s of CPU time.
+
+This is one file on one machine, not a best thread count; other files, machines and thread
+counts were not measured. Measure your own workload before choosing a value.
 
 ## Vendor SDKs and live cameras
 
