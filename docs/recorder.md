@@ -141,8 +141,10 @@ closed recording.
 - **An exception leaving the `with` block, `KeyboardInterrupt` included:** the recording is
   finished the same way and becomes the output. Ctrl-C is a normal way to end a live
   recording; the file then holds every event of every `write()` that completed. If the
-  interrupt lands inside a `write()`, that call contributes the first part of its events,
-  possibly none: the recording is always a prefix of everything passed to `write()`.
+  interrupt lands inside a `write()`, the part of that call's events already written stays in
+  the recording, possibly none of it: the recording is always a prefix of everything passed to
+  `write()`. That is different from a rejected call: a malformed array or an event with
+  `t >= 2**63` is refused before anything of the call is buffered or written.
 - **`overwrite=False`** (the default): `open()` raises `FileExistsError` if the target exists.
   The check is repeated just before the final move; if a file appeared at the target in the
   meantime, `close()` raises `FileExistsError` and leaves the finished recording at the
