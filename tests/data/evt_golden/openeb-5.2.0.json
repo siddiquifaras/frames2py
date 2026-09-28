@@ -1,0 +1,865 @@
+{
+ "decoder": "OpenEB 5.2.0 (tag 5.2.0, commit 9003b5416676e78ba994d912087486cfa94fae73), default RAW-file path: Metavision::Camera::from_file with time shifting and index building off; EVT3 uses EVT3Decoder<BasicCheckValidator>. Built from source on Ubuntu 24.04 ARM64 (gcc 13.3.0).",
+ "events": "t, x, y, p per CD event, in output order",
+ "violations": "protocol violations the decoder logged (EVT3 validator); decoding continues after them",
+ "run": "2026-09-28",
+ "cases": {
+  "evt2_A2_wrap_max_to_3": {
+   "sha256": "2fd812816919d9e40275d5e2db34f046e8b55af99f0ae9f21d6670ce9073dc36",
+   "events": [
+    [
+     17179868801,
+     0,
+     7,
+     1
+    ],
+    [
+     17179869377,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt2_A_wrap_max_to_zero": {
+   "sha256": "7f6d833068b43b31a6331f437d49a36cb9df67f482d80c2209e156aa562e418f",
+   "events": [
+    [
+     17179869170,
+     0,
+     7,
+     1
+    ],
+    [
+     17179869180,
+     1,
+     7,
+     1
+    ],
+    [
+     17179869185,
+     2,
+     7,
+     1
+    ],
+    [
+     17179869186,
+     3,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt2_B_mid_backward": {
+   "sha256": "406796f1919fac1cab291ef731fdd674b956763e5e09ef3dc24ea9a090f669cc",
+   "events": [
+    [
+     8589934602,
+     0,
+     7,
+     1
+    ],
+    [
+     4294967306,
+     1,
+     7,
+     1
+    ],
+    [
+     4294967370,
+     2,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt2_C_normal": {
+   "sha256": "5f862a6a7b5897bb007ada9a4aefb1647ef566adfc9a0c7cc6aeaf2f9eccb419",
+   "events": [
+    [
+     64000,
+     0,
+     7,
+     1
+    ],
+    [
+     64010,
+     1,
+     7,
+     1
+    ],
+    [
+     64020,
+     2,
+     7,
+     1
+    ],
+    [
+     64069,
+     3,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt2_D_reset_mid_to_zero": {
+   "sha256": "6795b45ca838ea0edef1cec0a73c5cf749aeeaa86aaf4b27fb7f93f8205295b9",
+   "events": [
+    [
+     8589934602,
+     0,
+     7,
+     1
+    ],
+    [
+     10,
+     1,
+     7,
+     1
+    ],
+    [
+     74,
+     2,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt2_E_forward_jump": {
+   "sha256": "3893d239e45de09e62231e4059489c3aac74e1591491ab5a2ce7d4d13760fdc2",
+   "events": [
+    [
+     6410,
+     0,
+     7,
+     1
+    ],
+    [
+     8589934602,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt2_F_low_out_of_order": {
+   "sha256": "0117197454e278d8f413fa69e763cb57646a5e5a9a4ba6dd11e2b33bb2a01b70",
+   "events": [
+    [
+     64040,
+     0,
+     7,
+     1
+    ],
+    [
+     64010,
+     1,
+     7,
+     1
+    ],
+    [
+     64030,
+     2,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt2_H_loop_threshold_156": {
+   "sha256": "54b61ebc45ca739ef47429a3b6b37595bc4c60d55423458f8b4aafc67dda5270",
+   "events": [
+    [
+     17179869125,
+     0,
+     7,
+     1
+    ],
+    [
+     17179879173,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt2_H_loop_threshold_157": {
+   "sha256": "f08bcfd6c2bbb117bde6623c73de1c21c9919336f0521b2e28a2ab2e135c5501",
+   "events": [
+    [
+     17179869125,
+     0,
+     7,
+     1
+    ],
+    [
+     10053,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt2_N1_cd_before_first_time_high": {
+   "sha256": "b3a21c7a158ad1ecfcb2c81b8dd01b62fec126ece44c2571007b025ca130a23b",
+   "events": [
+    [
+     642,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_A2_wrap_4093_to_2": {
+   "sha256": "8b1cc0e43fc8ac55e16a55e1c3a108aeee77f97c714f4d4e16340f29b1ec0b4c",
+   "events": [
+    [
+     16765028,
+     0,
+     7,
+     1
+    ],
+    [
+     16785508,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_A_wrap_4095_to_0": {
+   "sha256": "1afd8681f87e4d85f8ec842f256b078680665cb887c53dc077ea31e83c9c4df7",
+   "events": [
+    [
+     16777120,
+     0,
+     7,
+     1
+    ],
+    [
+     16777226,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_B2_backward_over_half": {
+   "sha256": "fd7d6f84876def91a597e5ccb32221f4d0375c96ed20b8baab977cc306c5ebac",
+   "events": [
+    [
+     12288100,
+     0,
+     7,
+     1
+    ],
+    [
+     18825316,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": [
+    "NonMonotonicTimeHigh"
+   ]
+  },
+  "evt3_B_mid_backward": {
+   "sha256": "30ef7e7cb327b234aacf540a6f290650287758fead1bca5cfa2a768e38861771",
+   "events": [
+    [
+     8388708,
+     0,
+     7,
+     1
+    ],
+    [
+     4194404,
+     1,
+     7,
+     1
+    ],
+    [
+     4198500,
+     2,
+     7,
+     1
+    ]
+   ],
+   "violations": [
+    "NonMonotonicTimeHigh"
+   ]
+  },
+  "evt3_C_normal": {
+   "sha256": "45c49a149d685a345e9103a46098663fd97bbe76b4af28bfed860ff06d71dca1",
+   "events": [
+    [
+     41060,
+     0,
+     7,
+     1
+    ],
+    [
+     41160,
+     1,
+     7,
+     1
+    ],
+    [
+     45061,
+     2,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_D_reset_mid_to_zero": {
+   "sha256": "a70cd150760fd2995ad5b0a6aeb712cdaa1a75964f5edb74d19e320c7e6f144d",
+   "events": [
+    [
+     8192100,
+     0,
+     7,
+     1
+    ],
+    [
+     50,
+     1,
+     7,
+     1
+    ],
+    [
+     4146,
+     2,
+     7,
+     1
+    ]
+   ],
+   "violations": [
+    "NonMonotonicTimeHigh"
+   ]
+  },
+  "evt3_E2_forward_jump_4095": {
+   "sha256": "03086ca208a452c8a42dae1f14959cf5e157a5443d2266c1e8bd04978e8dd892",
+   "events": [
+    [
+     0,
+     0,
+     7,
+     1
+    ],
+    [
+     16773120,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_E_forward_jump": {
+   "sha256": "be9e51c282e8b0b8cd951c4e4f20404c3bde0c84195953785cbc097a6c115a1e",
+   "events": [
+    [
+     409600,
+     0,
+     7,
+     1
+    ],
+    [
+     12288000,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_F_low_out_of_order": {
+   "sha256": "b0bf837d68c2311f2d56def112c581b2b6e9b068e53e4872e92a5bb972734b4a",
+   "events": [
+    [
+     41460,
+     0,
+     7,
+     1
+    ],
+    [
+     41060,
+     1,
+     7,
+     1
+    ],
+    [
+     41260,
+     2,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_G_first_TH_4095_no_warmup": {
+   "sha256": "1f8ba021bf9ca081ebbc980bf85f2cae8f976b41c49fa4f3fd7fe1874998bb77",
+   "events": [
+    [
+     16773220,
+     0,
+     7,
+     1
+    ],
+    [
+     16777120,
+     1,
+     7,
+     1
+    ],
+    [
+     16777266,
+     2,
+     7,
+     1
+    ],
+    [
+     16781362,
+     3,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_H_hal_3000_to_952": {
+   "sha256": "e978bdfc979b7912bc18edd4cfd5e636a017b56dfe9ea25e33f2b205c819e454",
+   "events": [
+    [
+     12288001,
+     0,
+     7,
+     1
+    ],
+    [
+     20676609,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": [
+    "NonMonotonicTimeHigh"
+   ]
+  },
+  "evt3_H_hal_3000_to_953": {
+   "sha256": "04f9e6df724fd78178bc78cc63c65893c5198bf56993b6443ea43b06b86a5f4d",
+   "events": [
+    [
+     12288001,
+     0,
+     7,
+     1
+    ],
+    [
+     3903489,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": [
+    "NonMonotonicTimeHigh"
+   ]
+  },
+  "evt3_H_sample_4095_to_10": {
+   "sha256": "27b9d8a0848369aeada65479138592fd015649a118395282a80df6b563b97ae5",
+   "events": [
+    [
+     16773121,
+     0,
+     7,
+     1
+    ],
+    [
+     16818177,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_H_sample_4095_to_11": {
+   "sha256": "3e40339b6c1226266b121f216c29ef14b850756ad1f75c60650016b6545bfe50",
+   "events": [
+    [
+     16773121,
+     0,
+     7,
+     1
+    ],
+    [
+     16822273,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_N1_events_before_first_row": {
+   "sha256": "1e1057a6393d9129adffcef1367709d896baf3b0f9f681238246a80397a314a2",
+   "events": [
+    [
+     40965,
+     2,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_N2_vectors_before_first_base": {
+   "sha256": "5d0c7d7a364a90fa6ef058ed448f72e3b64d49972bae8a522f993cb906d4032c",
+   "events": [
+    [
+     40965,
+     100,
+     7,
+     1
+    ],
+    [
+     40965,
+     112,
+     7,
+     1
+    ],
+    [
+     40965,
+     124,
+     7,
+     1
+    ]
+   ],
+   "violations": [
+    "InvalidVectBase"
+   ]
+  },
+  "evt3_N3_words_before_first_time_high": {
+   "sha256": "c2cfd0f9effb6b3a585cde1aaafc5662662d921c56782b844c47aeee1a8a8c92",
+   "events": [
+    [
+     40960,
+     3,
+     8,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_N4_time_low_reset_on_time_high_change": {
+   "sha256": "8857c7d1db2bb065f71d545ccc30ea67ee8dad9206e16551e39b6f6dcbbc7638",
+   "events": [
+    [
+     41060,
+     0,
+     7,
+     1
+    ],
+    [
+     41060,
+     1,
+     7,
+     1
+    ],
+    [
+     45056,
+     2,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_N5_backstep_3841_from_3841": {
+   "sha256": "be631aa3ea09cebc514edb800af016ccf526c1cca9fd58af72d0b2268c175aa2",
+   "events": [
+    [
+     15732737,
+     0,
+     7,
+     1
+    ],
+    [
+     16777217,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_N6_backstep_3840_from_3840": {
+   "sha256": "a19e24a50e8bc2d79e86e1f851c3b15a4f4e5d925e766298c89318e16a7879c6",
+   "events": [
+    [
+     15728641,
+     0,
+     7,
+     1
+    ],
+    [
+     16777217,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": [
+    "NonMonotonicTimeHigh"
+   ]
+  },
+  "evt3_N7_backstep_3841_from_4095": {
+   "sha256": "6ff2f73506e2988537f0b303bc56ca6920549c9776008894c5159e604398cc65",
+   "events": [
+    [
+     16773121,
+     0,
+     7,
+     1
+    ],
+    [
+     17817601,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_N8_backstep_3840_from_4095": {
+   "sha256": "55bc39084d66332a5e282b01ff96e7d77f4e4b022d695b08960642c68542d372",
+   "events": [
+    [
+     16773121,
+     0,
+     7,
+     1
+    ],
+    [
+     17821697,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": [
+    "NonMonotonicTimeHigh"
+   ]
+  },
+  "evt3_N9_reserved_row_with_triples": {
+   "sha256": "693e0ce9e91b566e9ba1c6dd0bc47c3a37df784a3d682b1a489a838339768960",
+   "events": [
+    [
+     40965,
+     1,
+     7,
+     1
+    ],
+    [
+     40965,
+     4,
+     8,
+     0
+    ],
+    [
+     40965,
+     100,
+     8,
+     1
+    ],
+    [
+     40965,
+     112,
+     8,
+     1
+    ],
+    [
+     40965,
+     124,
+     8,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_V1_vector_triple": {
+   "sha256": "242696ce14c9ce1893470488f92fa59be34fff9d8c3695c1998f717b6aa71328",
+   "events": [
+    [
+     40965,
+     100,
+     7,
+     1
+    ],
+    [
+     40965,
+     102,
+     7,
+     1
+    ],
+    [
+     40965,
+     112,
+     7,
+     1
+    ],
+    [
+     40965,
+     131,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_V2_lone_vect12_then_addr_x": {
+   "sha256": "aaebab13dcbeed94e98ef461fbe8e4a754e4291c1f105938802c05b7aabc6f79",
+   "events": [
+    [
+     40965,
+     100,
+     7,
+     1
+    ],
+    [
+     40965,
+     114,
+     7,
+     1
+    ],
+    [
+     40965,
+     115,
+     7,
+     1
+    ],
+    [
+     40965,
+     117,
+     7,
+     1
+    ],
+    [
+     40965,
+     120,
+     7,
+     1
+    ],
+    [
+     40965,
+     125,
+     7,
+     1
+    ],
+    [
+     40965,
+     126,
+     7,
+     1
+    ],
+    [
+     40965,
+     301,
+     7,
+     0
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_V3_triple_at_right_edge": {
+   "sha256": "8debb1587b340d9a600f483169ef8d20498b675ec6b46f832a7c4e682c57b6bb",
+   "events": [],
+   "violations": [
+    "InvalidVectBase"
+   ]
+  },
+  "evt3_V4_addr_x_between_base_and_vector": {
+   "sha256": "ab684507444066e13abde3d55a001f64a4e4d986e936548fbb847658dee2a22c",
+   "events": [
+    [
+     40965,
+     500,
+     7,
+     0
+    ],
+    [
+     40965,
+     100,
+     7,
+     1
+    ],
+    [
+     40965,
+     112,
+     7,
+     1
+    ],
+    [
+     40965,
+     124,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_V5_standalone_vect8": {
+   "sha256": "047d45a3a35f83eba90e4ff74db51da7bea982298ffc14150f06af975bcbc0b9",
+   "events": [
+    [
+     40965,
+     400,
+     7,
+     0
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_V6_y_beyond_height": {
+   "sha256": "c04cb4fa4b5b6376e1b6c27349565608cf1f99879f469b859fde8288215c3afe",
+   "events": [
+    [
+     40965,
+     4,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  },
+  "evt3_V7_reserved_row_type1": {
+   "sha256": "94ab2f9d28074a2514a1abb11b00163d2153d199c13aeae898d1f641c42ad577",
+   "events": [
+    [
+     40965,
+     1,
+     7,
+     1
+    ]
+   ],
+   "violations": []
+  }
+ }
+}

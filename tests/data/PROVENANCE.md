@@ -53,3 +53,20 @@ are a prefix of the recordings' events.
 
 The tests check these events against OpenEB 5.2.0's decode of the same recordings (its
 default RAW-file path), recorded as SHA-256 digests in `tests/adapters/test_evt_open.py`.
+
+## `evt_golden/`: crafted EVT inputs and OpenEB's output for them
+
+Forty tiny EVT 2.0 / 3.0 files (53 to 73 bytes) written by Frames2Py's own generators from
+the Prophesee format pages; no recorded data. Each case builds one decoding situation (a
+counter wrap, a backward step either side of a threshold, TIME_LOW handling, vectors, a
+reserved row, events before the first TIME_HIGH, row or vector base, a row beyond the
+height). The `N` cases come from `make_inputs.py` (`--check` rebuilds and compares); the
+others were written the same way during the adapter research and are committed unchanged.
+
+`openeb-5.2.0.json` holds, per input, its SHA-256, the events OpenEB 5.2.0's default
+RAW-file path produced for it, and the protocol violations OpenEB logged. OpenEB (tag
+`5.2.0`, commit `9003b54`) was built from source on Ubuntu 24.04 ARM64 and run through
+`Metavision::Camera::from_file` with time shifting and index building off, 2026-09-28; the
+same build had produced identical output for the 29 research inputs on 2026-09-27.
+`tests/adapters/test_evt_golden.py` says, case by case, where Frames2Py agrees with OpenEB
+and where it differs on purpose.
