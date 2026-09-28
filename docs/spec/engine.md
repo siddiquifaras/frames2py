@@ -20,7 +20,7 @@ Plane B: Snapshot Bridge
     Seqlock-protected double buffer; lock-free publication
 
 Plane C: Consumers
-    Viewer, Recorder, Telemetry  -  each polls latest_snapshot() independently
+    the viewer, Telemetry  -  each polls latest_snapshot() independently
 ```
 
 ---
@@ -69,7 +69,7 @@ If `running == False`, `ingest()` returns immediately without processing.
 ## 4. Consumers as Peers
 
 - Consumers are **peers**. The engine has **zero knowledge** of consumers.
-- Each consumer polls `latest_snapshot()` at its own rate (e.g. 30 Hz for viewer, 30 Hz for recorder, 1 Hz for telemetry).
+- Each consumer polls `latest_snapshot()` at its own rate (e.g. 60 Hz for the viewer, 1 Hz for telemetry).
 - Consumers never block the engine. If a consumer falls behind, it skips frames.
 - Consumers may run in separate threads. They do not hold any lock that the producer needs.
 
@@ -105,7 +105,7 @@ The state machine is **implicit**  -  there is no explicit state variable. The t
 | Thread | Role | Calls |
 |--------|------|-------|
 | **Single producer** | Event source | `ingest(events)` |
-| **Zero or more consumers** | Viewer, Recorder, Telemetry | `latest_snapshot()`, `stats`, `running` |
+| **Zero or more consumers** | the viewer, Telemetry | `latest_snapshot()`, `stats`, `running` |
 
 - Only one thread may call `ingest()` at a time. (Single-producer assumption.)
 - Any number of threads may call `latest_snapshot()` concurrently.

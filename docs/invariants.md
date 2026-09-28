@@ -27,7 +27,7 @@ These 12 invariants must hold for every commit. They are checked during code rev
 
 **Explanation:** Rendering runs in consumer threads. The engine is a tap; it publishes snapshots. Consumers pull. The engine has zero knowledge of consumers.
 
-**Code review question:** Does the engine import or call any module from `display/` or `consumers/`?
+**Code review question:** Does the engine import or call `frames2py.viewer`, `frames2py.recorder` or `consumers/`?
 
 ---
 
@@ -39,7 +39,7 @@ These 12 invariants must hold for every commit. They are checked during code rev
 
 **Explanation:** If a consumer held a lock the producer needs, the producer could block waiting for it. That would violate Invariant 1.
 
-**Code review question:** Do Viewer, Recorder, or Telemetry acquire locks that the engine's `ingest()` path uses?
+**Code review question:** Does the viewer, or Telemetry, acquire locks that the engine's `ingest()` path uses?
 
 ---
 
@@ -79,15 +79,15 @@ These 12 invariants must hold for every commit. They are checked during code rev
 
 ---
 
-## 7. Viewer Backends Are Optional Extras
+## 7. The Viewer's Backend Is an Optional Extra
 
-**Invariant:** Viewer backends (OpenCV, headless) are optional. The core library must run without them. Use lazy imports or optional dependencies.
+**Invariant:** The viewer's window backend (pyglet, `frames2py[viewer]`) is optional. The core library, and `frames2py.viewer.render()`, run without it; only `frames2py.viewer.run()` imports it.
 
-**Spec reference:** Architecture (README, engine.md)
+**Spec reference:** [viewer.md](viewer.md)
 
-**Explanation:** Users may run headless (e.g. recording-only, telemetry-only). The core must not depend on OpenCV or any GUI library.
+**Explanation:** Users may run headless (e.g. recording-only, telemetry-only). The core must not depend on any GUI library.
 
-**Code review question:** Does `frames2py` top-level import require `cv2` or other display dependencies?
+**Code review question:** Does `import frames2py` or `import frames2py.viewer` import pyglet or any other display dependency?
 
 ---
 
@@ -139,12 +139,12 @@ These 12 invariants must hold for every commit. They are checked during code rev
 
 ---
 
-## 12. Recording Never on Critical Path
+## 12. Recording Never Inside Ingest
 
-**Invariant:** The Recorder consumer runs in a separate thread and never blocks the engine. If disk I/O is slow, the recorder skips frames; it never asks the engine to slow down.
+**Invariant:** The recorder (`frames2py.recorder`) is a sink the caller writes to next to `ingest()`. The engine never calls it or waits for it, and it starts no thread. `write()` does its compression and file I/O on the caller's thread.
 
-**Spec reference:** [engine.md §4](spec/engine.md#4-consumers-as-peers)
+**Spec reference:** [recorder.md](recorder.md)
 
-**Explanation:** Recording is best-effort. The engine's ingest path is independent of recorder speed.
+**Explanation:** The engine's ingest path is the same with or without a recorder. A caller that records and ingests on one thread is bounded by both; the measured rates are in recorder.md.
 
-**Code review question:** Does the Recorder ever block or backpressure the engine?
+**Code review question:** Does the engine ever call the recorder, or does the recorder add a hook, thread or queue?
