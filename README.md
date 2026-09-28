@@ -108,8 +108,8 @@ documentation; none are quoted here yet.
 
 ## Core behaviour
 
-1. `ingest()` never waits on consumers: Frames2Py puts no synchronisation on the producer path
-   that consumer activity can hold. It is still CPU work on the caller's thread, and runtime
+1. `ingest()` never waits on consumers. Consumer reads do not require the producer to wait for
+   consumer-side frame copies. It is still CPU work on the caller's thread, and runtime
    effects (the GIL, CPython's own locks, garbage collection, scheduling) can delay it.
 2. A snapshot's frame and metadata always come from the same publication. The frame is shared
    by every consumer and marked read-only, and Frames2Py never writes it again. The read-only
