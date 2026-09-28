@@ -320,7 +320,7 @@ with evt.open("recording.raw", batch_size=10_000) as reader:
 ```
 
 ```python
-frames2py.replay.paced(batches, speed=1, clock=time.monotonic_ns, sleep=time.sleep)
+frames2py.replay.paced(batches, *, speed=1.0, clock=time.monotonic_ns, sleep=time.sleep)
 ```
 
 `paced()` works on any iterable of `EVENT_DTYPE` arrays. It yields each batch unchanged (the

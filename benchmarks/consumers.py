@@ -414,7 +414,7 @@ def replay_worker(request: dict[str, Any]) -> dict[str, Any]:
             readings.append(now)
         return now
 
-    for k, batch in enumerate(paced(batches, speed, clock=clock)):
+    for k, batch in enumerate(paced(batches, speed=speed, clock=clock)):
         late.append(time.monotonic_ns() - (readings[0] + due[k]))
         if engine is not None:
             engine.ingest(batch)
@@ -436,7 +436,7 @@ def replay_worker(request: dict[str, Any]) -> dict[str, Any]:
         fake[0] += round(seconds * 1e9)
 
     exact = 0
-    for k, _ in enumerate(paced(jumped, speed, clock=lambda: fake[0], sleep=sleep)):
+    for k, _ in enumerate(paced(jumped, speed=speed, clock=lambda: fake[0], sleep=sleep)):
         exact += fake[0] - 10**12 == fake_due[k]
     return {
         "runtime": environment.runtime(),

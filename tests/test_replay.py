@@ -44,7 +44,7 @@ def yield_times(batches: list[np.ndarray], speed: float = 1, work_ns: int = 0) -
     clock = FakeClock()
     start = clock.now
     times = []
-    for got, expected in zip(paced(batches, speed, clock=clock, sleep=clock.sleep), batches, strict=True):
+    for got, expected in zip(paced(batches, speed=speed, clock=clock, sleep=clock.sleep), batches, strict=True):
         assert got is expected
         times.append(clock.now - start)
         clock.now += work_ns
@@ -126,7 +126,7 @@ class TestBatches:
             unpaced = [b.copy() for b in reader]
         clock = FakeClock()
         with evt.open(DATA / "active_marker_head.evt3.raw") as reader:
-            replayed = list(paced(reader, 1_000, clock=clock, sleep=clock.sleep))
+            replayed = list(paced(reader, speed=1_000, clock=clock, sleep=clock.sleep))
         assert [b.tobytes() for b in replayed] == [b.tobytes() for b in unpaced]
         span_us = int(np.concatenate(unpaced)["t"].max()) - int(unpaced[0]["t"].min())
         assert clock.now - 5_000_000_000 == pytest.approx(span_us * 1000 / 1_000, abs=1)
@@ -143,7 +143,11 @@ class TestArguments:
     @pytest.mark.parametrize("speed", [0, -1, math.inf, -math.inf, math.nan, True, "2", None])
     def test_speed_must_be_finite_and_positive_on_the_call(self, speed: Any) -> None:
         with pytest.raises(ValueError, match="speed"):
-            paced([batch(1)], speed)
+            paced([batch(1)], speed=speed)
+
+    def test_speed_is_keyword_only(self) -> None:
+        with pytest.raises(TypeError):
+            paced([batch(1)], 2.0)  # type: ignore[misc]
 
     def test_no_thread_is_started(self) -> None:
         clock = FakeClock()

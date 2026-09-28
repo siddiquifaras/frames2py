@@ -32,7 +32,8 @@ __all__ = ["paced"]
 
 def paced(
     batches: Iterable[EventArray],
-    speed: float = 1,
+    *,
+    speed: float = 1.0,
     clock: Callable[[], int] = time.monotonic_ns,
     sleep: Callable[[float], Any] = time.sleep,
 ) -> Iterator[EventArray]:
