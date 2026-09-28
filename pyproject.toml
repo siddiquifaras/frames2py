@@ -37,7 +37,7 @@ keywords = [
     "accumulation",
 ]
 dependencies = [
-    "numpy>=1.24",
+    "numpy>=2.4",
 ]
 
 [project.optional-dependencies]

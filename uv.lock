@@ -158,7 +158,7 @@ requires-dist = [
     { name = "dv-processing", marker = "extra == 'aedat4'", specifier = ">=2.0.4" },
     { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.16" },
     { name = "hdf5plugin", marker = "extra == 'hdf5'", specifier = ">=7.1" },
-    { name = "numpy", specifier = ">=1.24" },
+    { name = "numpy", specifier = ">=2.4" },
     { name = "opencv-python", marker = "extra == 'all'", specifier = ">=4.8" },
     { name = "opencv-python", marker = "extra == 'viewer-opencv'", specifier = ">=4.8" },
 ]
