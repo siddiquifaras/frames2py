@@ -67,16 +67,26 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         help="run the opt-in tests on real recordings (fetch them with: uv run python -m tests.recordings download)",
     )
+    parser.addoption(
+        "--display",
+        action="store_true",
+        help="run the opt-in tests that open a window (needs a display and the viewer extra)",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "recordings: needs downloaded real recordings; runs only with --recordings")
+    config.addinivalue_line("markers", "display: opens a window; runs only with --display")
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    if config.getoption("--recordings"):
-        return
-    skip = pytest.mark.skip(reason="opt-in real-recording test: pass --recordings")
-    for item in items:
-        if "recordings" in item.keywords:
-            item.add_marker(skip)
+    for marker, option, reason in (
+        ("recordings", "--recordings", "opt-in real-recording test: pass --recordings"),
+        ("display", "--display", "opt-in window test: pass --display"),
+    ):
+        if config.getoption(option):
+            continue
+        skip = pytest.mark.skip(reason=reason)
+        for item in items:
+            if marker in item.keywords:
+                item.add_marker(skip)
