@@ -24,6 +24,9 @@ pip install "frames2py[aedat4]"   # AEDAT 4.0, pulls in dv-processing
 pip install "frames2py[hdf5]"     # HDF5, pulls in h5py and hdf5plugin
 ```
 
+The extras ask for the backend versions the adapters were tested with, or newer:
+dv-processing 2.0.4, h5py 3.16, hdf5plugin 7.1.
+
 `import frames2py` never imports an adapter or its backend. Opening a file without the
 backend installed raises `ImportError` naming the extra to install.
 
@@ -133,14 +136,24 @@ only a corrupt stream produces, raises `ValueError`.
 
 On the four real recordings in the test registry (below), the output equals OpenEB 5.2.0's
 default decode event for event. None of them contains a case where the rules above differ
-from OpenEB's.
+from OpenEB's. The cases where they do differ, and the format-silence cases where Frames2Py
+follows OpenEB, are pinned by 40 crafted inputs with OpenEB 5.2.0's recorded output for each
+(`tests/data/evt_golden/`).
 
 ## AEDAT 4.0
+
+**Pass a `batch_size` if throughput matters.** AEDAT 4.0 files store events in packets, and
+without `batch_size` each packet becomes one array. In the files tested, packets held a
+median of 36 to 944 events, and ingesting arrays that small is dominated by the Engine's
+per-call cost: 9 to 98 M events/s. With `batch_size=10_000` the same events ingested at 58 to
+197 M events/s (measurements below). Larger batches hold more events in memory and deliver
+them later; pick the size for your latency needs.
 
 - dv-processing reads the file's first camera, as named in its description. Of that
   camera's event streams, the one named `events` is read, or the only one there is.
   dv-processing's Python API doesn't tell which of several streams comes first in the
-  description, so several event streams with none named `events` raise `ValueError`.
+  description, so the adapter fails closed rather than guess: several event streams with
+  none named `events`, or a first camera with no event stream, raise `ValueError`.
 - Timestamps are the file's int64 microseconds. The format page describes Unix time; files
   from other sources can use another clock. A negative timestamp raises `ValueError` when
   iteration reaches its packet, and is never clamped.
@@ -235,12 +248,18 @@ What this shows:
 - Peak memory seen by `tracemalloc` while decoding: at most 17 MiB for the EVT files and
   35 MiB for the DSEC file.
 
-## Cameras
+## Vendor SDKs and live cameras
 
-There is no live-camera adapter. dv-processing can also read iniVation cameras, but that
-path hasn't been tested against hardware, so it isn't offered. Prophesee's Metavision SDK
-(and OpenEB) is not on PyPI and doesn't support macOS, so it can't be an extra; its RAW files
-are read by `evt`.
+Frames2Py v1 ships no vendor SDK adapter. A live-camera adapter is only offered once its
+path has been validated against real hardware, and none can be yet: dv-processing can read
+iniVation cameras, but that path hasn't been tested with a camera; Prophesee's Metavision SDK
+(and OpenEB) is not on PyPI and doesn't support macOS. Replaying recordings doesn't validate
+a live path. This will be revisited when validation hardware, or a supported package, is
+available.
+
+Until then, feed a camera SDK's output to the Engine yourself: build a 1-D `EVENT_DTYPE`
+array from each buffer the SDK delivers and call `ingest()`. Recordings are covered by the
+file adapters: Prophesee RAW by `evt`, AEDAT 4.0 by `aedat4`.
 
 ## Test data
 

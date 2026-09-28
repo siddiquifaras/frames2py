@@ -12,10 +12,16 @@
 dv-processing does the decoding; this module maps its events to ``EVENT_DTYPE``. Needs the
 ``frames2py[aedat4]`` extra.
 
+Throughput: with ``batch_size=None`` each file packet is one array, and packets can be small
+(a median of 36 to 944 events in the files tested). At that size the Engine's per-call cost
+dominates; ``batch_size=10_000`` ingested the same events 2 to 6 times faster. Larger batches
+hold more events in memory and deliver them later.
+
 Which stream: dv-processing reads the first camera named in the file's description; of its
-event streams, the one named ``events`` is read, or the only one there is. A camera with
-several event streams and none named ``events`` raises ``ValueError``: dv-processing's Python
-API doesn't expose their order in the description.
+event streams, the one named ``events`` is read, or the only one there is. dv-processing's
+Python API doesn't expose their order in the description, so the adapter fails closed:
+several event streams with none named ``events``, or a first camera with no event stream,
+raise ``ValueError``.
 
 Timestamps are the file's int64 microseconds, unchanged and in file order (the format page
 describes them as Unix time; recordings from other sources may use another epoch). A negative
