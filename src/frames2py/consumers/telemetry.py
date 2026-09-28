@@ -4,7 +4,7 @@ Polls :attr:`Engine.stats` and the engine's
 :class:`~frames2py.core.engine.LatencyTracker` at a configurable
 interval and stores a rolling history of
 :class:`TelemetrySample` records.  This data drives dashboards,
-log files, and the ``StatsOverlay``.
+and log files.
 """
 
 from __future__ import annotations
@@ -12,11 +12,20 @@ from __future__ import annotations
 import dataclasses
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from frames2py.consumers.viewer import Viewer
     from frames2py.core.engine import Engine
+
+
+class _ViewerCounters(Protocol):
+    """What Telemetry reads from an optional viewer."""
+
+    @property
+    def frames_shown(self) -> int: ...
+
+    @property
+    def frames_dropped(self) -> int: ...
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -56,8 +65,8 @@ class Telemetry:
     Parameters:
         engine: The :class:`~frames2py.core.engine.Engine` to monitor.
         poll_interval_ms: Milliseconds between successive polls.
-        viewer: Optional :class:`~frames2py.consumers.viewer.Viewer`
-            to collect viewer-side metrics from.
+        viewer: Optional object with ``frames_shown`` and ``frames_dropped``
+            counters to collect viewer-side metrics from.
 
     Example::
 
@@ -72,7 +81,7 @@ class Telemetry:
         self,
         engine: Engine,
         poll_interval_ms: float = 1000.0,
-        viewer: Viewer | None = None,
+        viewer: _ViewerCounters | None = None,
     ) -> None:
         self._engine = engine
         self._interval_s = poll_interval_ms / 1000.0

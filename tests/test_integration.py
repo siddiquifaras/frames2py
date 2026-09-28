@@ -17,7 +17,6 @@ from frames2py.bench.synthetic import generate_batch, event_stream, PROFILES
 from frames2py.core.engine import Engine
 from frames2py.core.types import EVENT_DTYPE, OverflowPolicy
 from frames2py.consumers.telemetry import Telemetry
-from frames2py.consumers.viewer import Viewer
 
 
 class TestSyntheticToEngine:
@@ -140,50 +139,6 @@ class TestEngineWithTelemetry:
         assert latest.events_dropped > 0
 
 
-class TestEngineWithViewer:
-    """Engine + headless Viewer working together."""
-
-    @pytest.mark.timeout(15)
-    def test_viewer_shows_frames(self):
-        engine = Engine(sensor_size=(64, 48))
-        viewer = Viewer(engine, backend="headless", fps=60).start()
-
-        for batch in event_stream(
-            rate_events_per_sec=200_000,
-            sensor_size=(64, 48),
-            batch_size=2000,
-            duration_sec=0.5,
-            paced=False,
-        ):
-            engine.ingest(batch)
-            time.sleep(0.005)
-
-        time.sleep(0.3)
-        viewer.stop()
-        assert viewer.frames_shown > 0
-
-    @pytest.mark.timeout(15)
-    def test_viewer_does_not_block_ingest(self):
-        """Viewer thread must not slow down the ingest path."""
-        engine = Engine(sensor_size=(64, 48))
-        viewer = Viewer(engine, backend="headless", fps=30).start()
-
-        t0 = time.perf_counter()
-        for batch in event_stream(
-            rate_events_per_sec=500_000,
-            sensor_size=(64, 48),
-            batch_size=5000,
-            duration_sec=0.5,
-            paced=False,
-        ):
-            engine.ingest(batch)
-        elapsed = time.perf_counter() - t0
-
-        viewer.stop()
-        # Ingest of ~250K events should complete in well under 5 seconds
-        assert elapsed < 5.0
-
-
 class TestOverflowAccounting:
     """Verify that events_ingested = events_in_buffer + events_dropped."""
 
@@ -202,33 +157,6 @@ class TestOverflowAccounting:
 
         stats = engine.stats
         assert stats.events_ingested == total_ingested
-
-
-class TestMultiConsumer:
-    """Multiple consumers polling simultaneously."""
-
-    @pytest.mark.timeout(15)
-    def test_viewer_and_telemetry_concurrent(self):
-        engine = Engine(sensor_size=(64, 48))
-        viewer = Viewer(engine, backend="headless", fps=60).start()
-        tel = Telemetry(engine, poll_interval_ms=50).start()
-
-        for batch in event_stream(
-            rate_events_per_sec=200_000,
-            sensor_size=(64, 48),
-            batch_size=2000,
-            duration_sec=0.5,
-            paced=False,
-        ):
-            engine.ingest(batch)
-            time.sleep(0.005)
-
-        time.sleep(0.3)
-        viewer.stop()
-        tel.stop()
-
-        assert viewer.frames_shown > 0
-        assert len(tel.history) > 0
 
 
 class TestProductionScalePipeline:
@@ -297,37 +225,3 @@ class TestProductionScalePipeline:
             frame, meta = result
             assert frame.max() > 0
             assert meta.events_accumulated == total
-
-
-class TestResetMidStream:
-    """Reset the engine while consumers are running."""
-
-    @pytest.mark.timeout(15)
-    def test_reset_while_viewer_running(self):
-        engine = Engine(sensor_size=(64, 48))
-        viewer = Viewer(engine, backend="headless", fps=60).start()
-
-        for batch in event_stream(
-            rate_events_per_sec=100_000,
-            sensor_size=(64, 48),
-            batch_size=1000,
-            duration_sec=0.2,
-            paced=False,
-        ):
-            engine.ingest(batch)
-
-        engine.reset()
-
-        # Continue after reset
-        for batch in event_stream(
-            rate_events_per_sec=100_000,
-            sensor_size=(64, 48),
-            batch_size=1000,
-            duration_sec=0.2,
-            paced=False,
-            seed=99,
-        ):
-            engine.ingest(batch)
-
-        time.sleep(0.2)
-        viewer.stop()
