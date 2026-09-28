@@ -1,44 +1,42 @@
 # frames2py
 
-**Non-blocking event-to-frame accumulation engine for event cameras.**
+**Live, decoupled observation of event-camera state.**
 
-Event cameras produce millions of asynchronous events per second. If your visualization code is slow, it throttles your whole pipeline. frames2py fixes this by completely separating accumulation from display. Your processing loop never waits on rendering.
+A producer feeds events to `Engine.ingest()`, which accumulates them through a kernel and
+publishes snapshots. Any number of consumers read the latest snapshot at their own pace, and
+the producer never waits for them.
 
 ## How it works
 
-frames2py has three layers that run independently:
-
 ```
-1. Ingest + Accumulate  (never blocks)
-   events -> ring buffer -> kernel -> snapshot
-
-2. Snapshot Bridge  (lock-free)
-   double-buffered publication via seqlock
-
-3. Consumers  (best-effort, async)
-   viewer / recorder / telemetry poll on their own schedule
+event stream -> Engine.ingest() -> kernel state -> published snapshot -> consumers
+                (your producer thread)                (engine.snapshot(), any thread, any number)
 ```
 
-The engine is a "tap" -- it copies events into its own buffer for visualization. Your processing path keeps running at full speed, even if the viewer falls behind.
+`ingest()` does its CPU work on the caller's thread and never waits for a consumer or for
+I/O. A consumer calls `engine.snapshot()` whenever it likes and gets the latest published
+snapshot; one that falls behind simply sees a later snapshot. The recorder is not a consumer
+of snapshots: your own loop writes events to it, next to `ingest()`.
 
 ## Quick start
 
 ```python
+import threading
 import frames2py
+from frames2py import viewer
 
-engine = frames2py.Engine(
-    sensor_size=(1280, 720),
-    kernel="event_count",
-)
+engine = frames2py.Engine((1280, 720), "event_count")
 
-viewer = frames2py.Viewer(engine, backend="opencv").start()
+def produce():
+    for events in your_event_source():   # 1-D arrays of frames2py.EVENT_DTYPE
+        engine.ingest(events)            # never waits for a consumer
+        run_inference(events)            # your critical path
 
-for events in your_event_source():
-    engine.ingest(events)      # non-blocking, < 2ms
-    run_inference(events)      # your critical path, unblocked
-
-viewer.stop()
+threading.Thread(target=produce, daemon=True).start()
+viewer.run(engine.snapshot)              # on the main thread; needs frames2py[viewer]
 ```
+
+Any consumer can read `engine.snapshot()` the same way, at its own pace.
 
 ## Installation
 
@@ -49,30 +47,29 @@ pip install frames2py
 # Or with uv
 uv add frames2py
 
-# With OpenCV viewer
-pip install "frames2py[viewer-opencv]"
+# Viewer (pyglet) and event recorder (HDF5)
+pip install "frames2py[viewer]"
+pip install "frames2py[recorder]"
 
 # File adapters: EVT 2.0 / 3.0 (Prophesee RAW), AEDAT 4.0, HDF5
 pip install "frames2py[evt]"
 pip install "frames2py[aedat4]"
 pip install "frames2py[hdf5]"
-
-# Everything
-pip install "frames2py[all]"
 ```
 
 ## Kernels
 
-Kernels define how events are turned into frames.
+A kernel defines the state the events accumulate into.
 
-| Kernel | What it does | Resets each snapshot |
-|--------|-------------|---------------------|
-| `event_count` | Counts events per pixel | Yes |
-| `polarity` | Separates ON/OFF events into two channels | Yes |
-| `time_surface` | Stores the latest timestamp per pixel | No |
-| `exp_decay` | Exponential decay trails | No |
+| Kernel | Output | State across snapshots |
+|--------|--------|------------------------|
+| `event_count` | `(H, W)` uint32, events per pixel | windowed: each publication starts a new window |
+| `polarity` | `(H, W, 2)` uint32, OFF and ON counts | windowed |
+| `time_surface` | `(H, W)` uint64, latest timestamp per pixel | running |
+| `ExpDecay(decay)` | `(H, W)` float32, decays once per `ingest()` call | running |
+| `TimestampDecay(tau_us)` | `(H, W)` float32, decays with event time | running |
 
-All kernels use vectorized NumPy. Optional C++ backends (pybind11) are available for higher throughput.
+The kernels are NumPy. The C++ code under `native/` is prototype code; it is not built or used.
 
 ## Adapters
 
@@ -90,56 +87,53 @@ with evt.open("recording.raw") as reader:
 Supported: **EVT 2.0 / 3.0** (`frames2py.adapters.evt`), **AEDAT 4.0** (`frames2py.adapters.aedat4`),
 **HDF5** (`frames2py.adapters.hdf5`). See [docs/adapters.md](docs/adapters.md).
 
-## Overlays
+## Viewer, recorder and replay
 
-```python
-from frames2py.display.overlays import FPSOverlay, BBoxOverlay, StatsOverlay
+- `frames2py.viewer`: `render()` turns a snapshot into an RGB image; `run()` shows an Engine's
+  snapshots in a window, on the main thread. See [docs/viewer.md](docs/viewer.md).
+- `frames2py.recorder`: records events to HDF5, read back by `frames2py.adapters.hdf5`. See
+  [docs/recorder.md](docs/recorder.md).
+- `frames2py.replay.paced()`: replays a recording's batches at their recorded pace. See
+  [docs/adapters.md](docs/adapters.md#replaying-at-the-recorded-pace).
 
-viewer.add_overlay(FPSOverlay())
-viewer.add_overlay(StatsOverlay(engine))
-
-bbox = BBoxOverlay()
-viewer.add_overlay(bbox)
-bbox.update([BBox(x1=100, y1=50, x2=300, y2=200, label="car")])
-```
+Examples: `examples/view_synthetic.py`, `examples/record_and_read_back.py`,
+`examples/replay_recording.py`.
 
 ## Benchmarks
 
-```bash
-python -m frames2py.bench.stress --profile high --duration 10
-python -m frames2py.bench.latency --profile high --iterations 5000
-```
+The benchmark suite is in `benchmarks/`, in the repository but not in the package
+(`uv run python -m benchmarks --help`). Results with their conditions (hardware, Python,
+NumPy, resolution, events per call, kernel, method) will be published with the v1
+documentation; none are quoted here yet.
 
-| Profile | Rate | Sensor | NumPy | C++ |
-|---------|------|--------|-------|-----|
-| low | 500K ev/s | 346x260 | 0 drops | 0 drops |
-| medium | 2M ev/s | 640x480 | 0 drops | 0 drops |
-| high | 5M ev/s | 1280x720 | best effort | 0 drops |
-| stress | 10M ev/s | 1280x720 | best effort | < 1% drops |
+## Core behaviour
 
-## Key guarantees
-
-1. `engine.ingest()` never blocks. No mutex, no backpressure.
-2. Ring buffer drops whole chunks, not individual events.
-3. Snapshot publication is lock-free (seqlock).
-4. Consumers never hold locks needed by the engine.
-5. Telemetry counters are always maintained, even with no consumers attached.
-
-See [docs/invariants.md](docs/invariants.md) for the full list of 12 build-time invariants.
+1. `ingest()` never waits on consumers. Consumer reads do not require the producer to wait for
+   consumer-side frame copies. It is still CPU work on the caller's thread, and runtime
+   effects (the GIL, CPython's own locks, garbage collection, scheduling) can delay it.
+2. A snapshot's frame and metadata always come from the same publication. The frame is shared
+   by every consumer and marked read-only, and Frames2Py never writes it again. The read-only
+   flag is NumPy's, not a memory-safety boundary: to modify the data, or hand it to a library
+   that ignores the flag, use `snapshot.copy()`.
+3. Every event of an accepted `ingest()` call is either accumulated or counted as out of bounds.
 
 ## Project structure
 
 ```
 frames2py/
   src/frames2py/
-    core/           # Engine, types, transport (ring buffer, seqlock)
-    kernels/        # Kernel protocol + NumPy/C++ implementations
-    consumers/      # Viewer, Recorder, Telemetry
-    display/        # Renderer backends + overlays
+    _engine.py, _accumulator.py, publish.py   # the v1 core
+    core/           # prototype Engine and transport, kept for its remaining dependents
+    kernels/        # Kernel protocol and the five kernels (plus prototype kernels)
+    consumers/      # Telemetry
+    viewer/         # render() and the pyglet viewer
+    recorder/       # HDF5 event recorder
+    replay.py       # paced replay
     adapters/       # EVT 2.0 / 3.0, AEDAT4 and HDF5 file adapters
-    bench/          # Synthetic event generator + benchmarks
-  native/           # C++ pybind11 kernels
-  tests/            # pytest suite (169 tests)
+    bench/          # prototype synthetic generator and benchmarks
+  native/           # prototype C++ kernels, not built
+  benchmarks/       # the benchmark suite
+  tests/            # pytest suite
   docs/             # Specifications
   examples/         # Usage examples
 ```

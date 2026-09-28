@@ -24,6 +24,12 @@ A value outside its range raises ``ValueError`` when iteration reaches its batch
 
 The file has no geometry field: ``sensor_size`` is the explicit value, or ``None``.
 
+A group written by ``frames2py.recorder`` carries the attribute ``frames2py_format_version``.
+When a group has that attribute, it must be exactly the integer 1, or ``open()`` raises
+``ValueError``: a later format is never read as this one. A group without it (DSEC, for one)
+is read as it always was. The recorder's ``sensor_width`` and ``sensor_height`` attributes are
+not read.
+
 Compressed datasets are read through the filters h5py and hdf5plugin provide. A dataset
 whose mandatory filter neither has raises ``ValueError`` on ``open()``; one whose optional
 filter is missing (Blosc is usually stored as optional) raises ``ValueError`` when iteration
@@ -54,6 +60,10 @@ READ_EVENTS: Final = 1 << 20
 """Events read from each dataset per step."""
 
 FIELDS: Final = ("t", "x", "y", "p")
+
+FORMAT_VERSION_ATTRIBUTE: Final = "frames2py_format_version"
+FORMAT_VERSION: Final = 1
+"""The Frames2Py recording format this reader reads, when a group declares one."""
 _RANGES: Final = {"x": (0, 0xFFFF), "y": (0, 0xFFFF), "p": (0, 0xFF)}
 
 
@@ -82,8 +92,9 @@ def open(
         OSError: *path* is a directory or can't be read.
         TypeError: *group* is not a str, or *t_offset* not an int, str or ``None``.
         ValueError: the file isn't HDF5, the group or its datasets don't follow the
-            schema, the ``t_offset`` dataset isn't a scalar integer, or a dataset's
-            mandatory filter isn't available.
+            schema, the group declares a ``frames2py_format_version`` other than 1, the
+            ``t_offset`` dataset isn't a scalar integer, or a dataset's mandatory filter
+            isn't available.
     """
     explicit = check_sensor_size(sensor_size)
     size = check_batch_size(batch_size)
@@ -113,6 +124,7 @@ def _datasets(h5py: Any, handle: Any, group: str) -> dict[str, Any]:
     node = handle.get(group)
     if not isinstance(node, h5py.Group):
         raise ValueError(f"{group!r} is not a group in the file" if node is None else f"{group!r} is not a group")
+    _check_format_version(node, group)
     datasets = {}
     for field in FIELDS:
         dataset = node.get(field)
@@ -129,6 +141,16 @@ def _datasets(h5py: Any, handle: Any, group: str) -> dict[str, Any]:
     if len(set(lengths.values())) > 1:
         raise ValueError(f"datasets in {group!r} have different lengths: {lengths}")
     return datasets
+
+
+def _check_format_version(node: Any, group: str) -> None:
+    if FORMAT_VERSION_ATTRIBUTE not in node.attrs:
+        return
+    value = node.attrs[FORMAT_VERSION_ATTRIBUTE]
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)) or value != FORMAT_VERSION:
+        raise ValueError(
+            f"group {group!r} declares {FORMAT_VERSION_ATTRIBUTE} {value!r}; this reader reads version {FORMAT_VERSION} only"
+        )
 
 
 def _check_filters(h5py: Any, dataset: Any) -> None:

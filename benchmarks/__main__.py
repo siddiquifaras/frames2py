@@ -1,4 +1,5 @@
-"""Command line: ``uv run python -m benchmarks {list,run,report,stage2,gate,adapters,adapters-report}``."""
+"""Command line: ``uv run python -m benchmarks {list,run,report,stage2,gate,adapters,adapters-report,
+recorder,viewer,replay,consumers-report}``."""
 
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from benchmarks import adapters, environment, gate, report, results
+from benchmarks import adapters, consumers, environment, gate, report, results
 from benchmarks.matrix import SUITES, Cell
 from benchmarks.measure import Policy
 from benchmarks.runner import run_suite, worker
@@ -94,6 +95,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     adapters_report_cmd = commands.add_parser("adapters-report", help="tabulate an adapter characterisation document")
     adapters_report_cmd.add_argument("result", type=Path)
     commands.add_parser("adapters-worker", help="internal: one adapter run, request on stdin, record on stdout")
+    recorder_cmd = commands.add_parser("recorder", help="characterise the recorder's write rate on real recordings")
+    recorder_cmd.add_argument("--recording", action="append", help="a name from tests.recordings; repeatable")
+    recorder_cmd.add_argument("--events", type=int, default=consumers.RECORDER_EVENTS, help="events per recording")
+    viewer_cmd = commands.add_parser("viewer", help="characterise rendering and a viewing consumer's effect on ingest")
+    replay_cmd = commands.add_parser("replay", help="characterise paced replay's timing on real recordings")
+    replay_cmd.add_argument("--seconds", type=float, default=consumers.REPLAY_SECONDS,
+                            help="seconds of each recording")
+    for sub in (recorder_cmd, viewer_cmd, replay_cmd):
+        sub.add_argument("--out", type=Path, required=True)
+        sub.add_argument("--runs", type=int, default=5)
+    consumers_report_cmd = commands.add_parser("consumers-report", help="tabulate a consumer characterisation document")
+    consumers_report_cmd.add_argument("result", type=Path)
+    commands.add_parser("consumers-worker", help="internal: one consumer run, request on stdin, record on stdout")
 
     args = parser.parse_args(argv)
 
@@ -101,6 +115,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dump(worker(json.load(sys.stdin)), sys.stdout)
         return 0
 
+    if args.command == "consumers-worker":
+        json.dump(consumers.worker(json.load(sys.stdin)), sys.stdout)
+        return 0
+    if args.command in ("recorder", "viewer", "replay"):
+        if args.out.exists():
+            parser.error(f"{args.out} exists")
+        extra = {"recordings": args.recording, "events": args.events} if args.command == "recorder" else (
+            {"seconds": args.seconds} if args.command == "replay" else {})
+        document = consumers.run(args.command, runs=args.runs, **extra)
+        args.out.write_text(json.dumps(document, indent=1))
+        print(consumers.report(document))
+        return 0 if document["valid"] else 1
+    if args.command == "consumers-report":
+        print(consumers.report(json.loads(args.result.read_text())))
+        return 0
     if args.command == "adapters-worker":
         json.dump(adapters.worker(json.load(sys.stdin)), sys.stdout)
         return 0

@@ -10,7 +10,7 @@
 | Role | Count | Responsibility |
 |------|-------|-----------------|
 | **Producer** | 1 | Calls `ingest(events)`. Owns the ingest path. |
-| **Consumers** | 0 or more | Call `latest_snapshot()`, read `stats`, check `running`. Viewer, Recorder, Telemetry. |
+| **Consumers** | 0 or more | Call `latest_snapshot()`, read `stats`, check `running`. The viewer, Telemetry. |
 
 ---
 

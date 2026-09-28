@@ -301,6 +301,66 @@ commands on the same machine, with the output files written elsewhere, gave 91 a
 This is one file on one machine, not a best thread count; other files, machines and thread
 counts were not measured. Measure your own workload before choosing a value.
 
+## Replaying at the recorded pace
+
+A reader yields batches as fast as it can decode them. To feed an Engine at the rate the
+events were recorded (to watch a recording, or to test a consumer against a realistic
+stream), wrap the reader in `frames2py.replay.paced`:
+
+```python
+import frames2py
+from frames2py.adapters import evt
+from frames2py.replay import paced
+
+with evt.open("recording.raw", batch_size=10_000) as reader:
+    engine = frames2py.Engine(reader.sensor_size, "event_count")
+    for events in paced(reader, speed=1.0):   # 2.0 is twice as fast, 0.5 half
+        engine.ingest(events)
+    engine.stop()
+```
+
+```python
+frames2py.replay.paced(batches, *, speed=1.0, clock=time.monotonic_ns, sleep=time.sleep)
+```
+
+`paced()` works on any iterable of `EVENT_DTYPE` arrays. It yields each batch unchanged (the
+same array object) on the caller's thread, and between batches it sleeps. It starts no
+thread, keeps no queue and never drops a batch.
+
+**When a batch is due.** The first nonempty batch fixes the start: its smallest timestamp
+`t0`, and the clock's reading at that moment. `M` is the largest timestamp seen so far,
+including the batch about to be yielded. The batch is yielded once the clock has advanced
+`(M - t0) / speed` microseconds (rounded up to a whole nanosecond) past the start. So the first
+batch waits for its own span, as it would have from a live sensor, and each later batch for
+its newest event. Empty batches are yielded at once.
+
+**Discontinuities are taken as they come.** Nothing is repaired and no reset is inferred
+(see "Timestamps" above):
+- a batch whose timestamps go back, such as a source clock that restarted, leaves `M` where it
+  was: it is already due and is yielded at once, and so are the ones after it until the
+  timestamps pass `M` again;
+- a batch with a timestamp far ahead advances `M`, so the replay waits for it, as long as the
+  jump says; the batches after it wait behind it.
+
+If a recording's clock restarts, call `engine.reset()` yourself, as for a live source.
+
+**Falling behind.** If the consumer is slower than the recording, each batch is yielded as soon
+as the consumer asks for it; the replay doesn't skip ahead to catch up and doesn't sleep. The
+schedule is always measured from the start, so lateness never accumulates into drift.
+
+**Accuracy.** The wait is `time.sleep()`, so each batch is late by the operating system's sleep
+overshoot. `clock` and `sleep` can be replaced, for a finer sleep or a simulated clock in tests.
+`speed` must be a finite number above 0 (`ValueError`); a batch that is not an `EVENT_DTYPE`
+array raises `TypeError` when it is reached.
+
+Measured with `python -m benchmarks replay` on an Apple M4, macOS 15.7.7, CPython 3.11.14
+(and 3.14.2t, GIL disabled, within a few percent), 10,000-event batches of the first 5 s of
+`active_marker.raw` and of `sparklers.raw`, 5 runs, medians: no batch was early; the replay
+took 1.0006-1.0017 times the requested time; batches were late by 1.1-3.3 ms at the median and
+at most 5.1 ms. The lateness is `time.sleep()` overshooting, which on that machine grew with the
+requested sleep (about 7 ms over a 14 ms sleep). With a fake clock and sleep, each batch was
+yielded exactly at its due time, including over an inserted backward jump and forward spike.
+
 ## Vendor SDKs and live cameras
 
 Frames2Py v1 ships no vendor SDK adapter. A live-camera adapter is only offered once its

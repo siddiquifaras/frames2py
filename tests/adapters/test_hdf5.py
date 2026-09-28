@@ -178,6 +178,45 @@ class TestSchema:
         assert isinstance(info.value.__cause__, OSError)
 
 
+class TestFormatVersion:
+    """``frames2py_format_version`` on the group: absent reads as before, 1 reads, anything else is refused."""
+
+    @staticmethod
+    def with_attrs(path: Path, **attrs: Any) -> Path:
+        import h5py
+
+        simple(path)
+        with h5py.File(path, "a") as f:
+            f["events"].attrs.update(attrs)
+        return path
+
+    def test_absent_reads_as_before(self, tmp_path: Path) -> None:
+        plain = simple(tmp_path / "plain.h5")
+        tagged = self.with_attrs(tmp_path / "tagged.h5", sensor_width=10, sensor_height=20)
+        assert read_all(tagged, group="events")[0].tobytes() == read_all(plain, group="events")[0].tobytes()
+
+    @pytest.mark.parametrize("value", [1, np.int8(1), np.uint8(1), np.int64(1), np.uint64(1)])
+    def test_version_one_reads(self, tmp_path: Path, value: Any) -> None:
+        path = self.with_attrs(tmp_path / "f.h5", frames2py_format_version=value)
+        events, _, size = read_all(path, group="events")
+        assert events.tolist() == [(5, 0, 0, 0), (6, 1, 2, 1), (7, 639, 479, 1)]
+        assert size is None
+
+    def test_sensor_attributes_do_not_set_the_geometry(self, tmp_path: Path) -> None:
+        path = self.with_attrs(tmp_path / "f.h5", frames2py_format_version=1, sensor_width=640, sensor_height=480)
+        assert read_all(path, group="events")[2] is None
+        assert read_all(path, group="events", sensor_size=(1280, 720))[2] == (1280, 720)
+
+    @pytest.mark.parametrize("value", [2, 0, -1, 1.0, np.float32(1), True, np.bool_(True), "1", b"1",
+                                       np.array([1]), np.array([1, 1])])
+    def test_any_other_value_is_refused_on_open(self, tmp_path: Path, value: Any) -> None:
+        from frames2py.adapters import hdf5
+
+        path = self.with_attrs(tmp_path / "f.h5", frames2py_format_version=value)
+        with pytest.raises(ValueError, match="frames2py_format_version"):
+            hdf5.open(path, group="events")
+
+
 class TestValues:
     @pytest.mark.parametrize("dtype", ["u1", "u2", "u4", "u8", "i2", "i4", "i8"])
     def test_integer_columns_of_any_width(self, tmp_path: Path, dtype: str) -> None:

@@ -16,8 +16,6 @@ import frames2py
 | Symbol | Description |
 |-------|-------------|
 | `Engine` | Non-blocking event-to-frame accumulation engine |
-| `Viewer` | Asynchronous snapshot viewer (daemon thread) |
-| `Recorder` | Snapshot recorder to MP4 |
 | `Telemetry` | Periodic engine health monitor |
 | `TelemetrySample` | Single telemetry data point |
 | `EVENT_DTYPE` | Canonical NumPy dtype for events |
@@ -194,62 +192,21 @@ Rolling-window tracker for accumulate-call durations. Used by Telemetry.
 
 ---
 
-## 5. Viewer
+## 5. Viewer and recorder
 
-```python
-Viewer(
-    engine: Engine,
-    backend: str = "opencv",
-    fps: float = 30.0,
-    window_name: str = "frames2py",
-    colormap: str | None = None,
-) -> Viewer
-```
-
-| Parameter | Description |
-|-----------|-------------|
-| `backend` | `"opencv"` or `"headless"` |
-| `fps` | Target polling rate |
-| `colormap` | OpenCV colormap name (e.g. `"viridis"`, `"hot"`) or `None` for grayscale |
-
-**Methods:**
-- `start() -> Viewer`  -  Start daemon thread
-- `stop() -> None`  -  Stop and join thread
-- `add_overlay(overlay: Overlay) -> None`
-
-**Properties:**
-- `frames_shown: int`
-- `frames_dropped: int`
+The prototype `Viewer` and `Recorder` are removed. Their replacements are separate modules
+behind their own extras: `frames2py.viewer` ([viewer.md](viewer.md)) and `frames2py.recorder`
+([recorder.md](recorder.md)); paced replay is `frames2py.replay` ([adapters.md](adapters.md)).
 
 ---
 
-## 6. Recorder
-
-```python
-Recorder(
-    engine: Engine,
-    output_path: str,
-    fps: float = 30.0,
-    codec: str = "mp4v",
-) -> Recorder
-```
-
-**Methods:**
-- `start() -> Recorder`
-- `stop() -> None`
-
-**Properties:**
-- `frames_written: int`
-
----
-
-## 7. Telemetry
+## 6. Telemetry
 
 ```python
 Telemetry(
     engine: Engine,
     poll_interval_ms: float = 1000.0,
-    viewer: Viewer | None = None,
+    viewer: object | None = None,  # anything with frames_shown / frames_dropped
 ) -> Telemetry
 ```
 
@@ -261,7 +218,7 @@ Telemetry(
 - `history: list[TelemetrySample]`
 - `latest: TelemetrySample | None`
 
-### 7.1 TelemetrySample
+### 6.1 TelemetrySample
 
 ```python
 @dataclass(frozen=True)
@@ -281,7 +238,7 @@ class TelemetrySample:
 
 ---
 
-## 8. Kernel Protocol
+## 7. Kernel Protocol
 
 ```python
 class Kernel(Protocol):
@@ -308,51 +265,13 @@ class Kernel(Protocol):
 
 ---
 
-## 9. Display Overlays
-
-```python
-from frames2py.display.overlays import (
-    FPSOverlay,
-    TimestampOverlay,
-    StatsOverlay,
-    BBoxOverlay,
-    BBox,
-)
-```
-
-### 9.1 BBox
-
-```python
-@dataclass
-class BBox:
-    x1: int
-    y1: int
-    x2: int
-    y2: int
-    label: str = ""
-    color: tuple[int, int, int] = (0, 255, 0)
-    confidence: float = 1.0
-```
-
-### 9.2 Overlay Usage
-
-```python
-viewer.add_overlay(FPSOverlay())
-viewer.add_overlay(StatsOverlay(engine))
-bbox = BBoxOverlay()
-viewer.add_overlay(bbox)
-bbox.update([BBox(100, 50, 300, 200, label="car")])
-```
-
----
-
-## 10. Adapters
+## 8. Adapters
 
 The file adapters (EVT 2.0 / 3.0, AEDAT 4.0, HDF5) are described in [adapters.md](adapters.md).
 
 ---
 
-## 11. Validation
+## 9. Validation
 
 ```python
 from frames2py.core.types import validate_event_batch
