@@ -142,6 +142,10 @@ hdf5 = [
     { name = "h5py" },
     { name = "hdf5plugin" },
 ]
+recorder = [
+    { name = "h5py" },
+    { name = "hdf5plugin" },
+]
 viewer-opencv = [
     { name = "opencv-python" },
 ]
@@ -157,12 +161,14 @@ dev = [
 requires-dist = [
     { name = "dv-processing", marker = "extra == 'aedat4'", specifier = ">=2.0.4" },
     { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.16" },
+    { name = "h5py", marker = "extra == 'recorder'", specifier = ">=3.16" },
     { name = "hdf5plugin", marker = "extra == 'hdf5'", specifier = ">=7.1" },
+    { name = "hdf5plugin", marker = "extra == 'recorder'", specifier = ">=7.1" },
     { name = "numpy", specifier = ">=2.4" },
     { name = "opencv-python", marker = "extra == 'all'", specifier = ">=4.8" },
     { name = "opencv-python", marker = "extra == 'viewer-opencv'", specifier = ">=4.8" },
 ]
-provides-extras = ["evt", "aedat4", "hdf5", "viewer-opencv", "all"]
+provides-extras = ["evt", "aedat4", "hdf5", "recorder", "viewer-opencv", "all"]
 
 [package.metadata.requires-dev]
 dev = [
