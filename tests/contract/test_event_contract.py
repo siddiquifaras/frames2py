@@ -36,7 +36,7 @@ def _engine_entry(kernel: str) -> Entry:
     def observe() -> tuple[Any, ...]:
         stats = engine.stats
         snap = engine.snapshot()
-        published = None if snap is None else (snap[0].tobytes(), snap[1].sequence)
+        published = None if snap is None else (snap.frame.tobytes(), snap.meta.sequence)
         return (stats.events_ingested, stats.events_out_of_bounds, stats.snapshots_published, published)
 
     return Entry(feed=engine.ingest, observe=observe)
@@ -148,7 +148,8 @@ class TestTimestampRange:
             engine.ingest(events((9, 0, 0, 1), (2**63, 1, 0, 0), (11, 3, 2, 0)))
         engine.ingest(events())
         oracle.accumulate(events())
-        frame, meta = engine.snapshot()
+        snap = engine.snapshot()
+        frame, meta = snap.frame, snap.meta
         assert_matches(frame, oracle)
         assert meta.watermark == oracle.watermark == 7
 
@@ -232,7 +233,7 @@ def test_engine_accounting_every_event_accumulated_or_out_of_bounds() -> None:
         batch = random_events(seed, 50 + seed)
         engine.ingest(batch)
         oracle.accumulate(batch)
-        published += int(engine.snapshot()[0].sum())
+        published += int(engine.snapshot().frame.sum())
         total += len(batch)
     stats = engine.stats
     assert stats.events_ingested == total

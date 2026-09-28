@@ -348,52 +348,7 @@ bbox.update([BBox(100, 50, 300, 200, label="car")])
 
 ## 10. Adapters
 
-Adapters are optional and use lazy imports. Install with extras: `frames2py[adapter-h5]`, etc.
-
-### 10.1 HDF5
-
-```python
-from frames2py.adapters.h5 import from_h5, to_h5
-
-# Read
-for batch, meta in from_h5(path, chunk_size=50_000, dataset="events"):
-    engine.ingest(batch)
-
-# Write
-to_h5(path, events)
-```
-
-### 10.2 AEDAT4
-
-```python
-from frames2py.adapters.aedat4 import from_aedat4, to_aedat4
-
-for batch, meta in from_aedat4(path, chunk_size=50_000):
-    engine.ingest(batch)
-
-to_aedat4(path, events, sensor_size=(width, height))
-```
-
-### 10.3 UDP
-
-```python
-from frames2py.adapters.udp import from_udp, to_udp, pack_events_udp, unpack_events_udp
-
-for batch, meta in from_udp(host="127.0.0.1", port=9000, timeout=1.0):
-    engine.ingest(batch)
-
-to_udp(events, host="127.0.0.1", port=9000)
-```
-
-### 10.4 Format Converter
-
-```python
-from frames2py.adapters.convert import convert, read_events, write_events
-
-n = convert("input.h5", "output.aedat4")
-events = read_events("data.npy")
-write_events("out.csv", events)
-```
+The file adapters (EVT 2.0 / 3.0, AEDAT 4.0, HDF5) are described in [adapters.md](adapters.md).
 
 ---
 

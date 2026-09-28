@@ -105,8 +105,10 @@ def _memory_bytes() -> int | None:
 
 
 def _power() -> dict[str, Any]:
+    from benchmarks import power
+
     if sys.platform != "darwin":
-        return {"source": None, "low_power_mode": None}
+        return {"source": None, "low_power_mode": None, **power.state()}
     batt = _run("pmset", "-g", "batt") or ""
     first = batt.splitlines()[0] if batt else ""
     source = first.split("'")[1] if first.count("'") >= 2 else None
@@ -115,12 +117,33 @@ def _power() -> dict[str, Any]:
         parts = line.split()
         if len(parts) == 2 and parts[0] == "lowpowermode" and parts[1] in ("0", "1"):
             low_power = parts[1] == "1"
-    return {"source": source, "low_power_mode": low_power}
+    return {"source": source, "low_power_mode": low_power, **power.state()}
 
 
 def _gil_enabled() -> bool | None:
     check = getattr(sys, "_is_gil_enabled", None)
     return bool(check()) if check is not None else True
+
+
+def runtime() -> dict[str, Any]:
+    """The interpreter this process runs on, read from the process itself."""
+    return {
+        "python": sys.version.split()[0],
+        "python_build": sys.version,
+        "free_threaded_build": sysconfig.get_config_var("Py_GIL_DISABLED") == 1,
+        "gil_enabled": _gil_enabled(),
+        "numpy": np.__version__,
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "executable": sys.executable,
+    }
+
+
+def _load_average() -> list[float] | None:
+    try:
+        return list(os.getloadavg())
+    except OSError:
+        return None
 
 
 def capture() -> dict[str, Any]:
@@ -140,6 +163,7 @@ def capture() -> dict[str, Any]:
         "numpy": np.__version__,
         "frames2py": frames2py.__version__,
         "power": _power(),
+        "load_average": _load_average(),
     }
 
 

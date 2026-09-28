@@ -15,6 +15,7 @@ import pytest
 
 from frames2py.core.types import EVENT_DTYPE, SnapshotMeta
 from frames2py.kernels.base import get_kernel
+import frames2py.kernels.native_kernels  # noqa: F401  registers the native_* kernels
 
 from tests.native_guard import require_native
 

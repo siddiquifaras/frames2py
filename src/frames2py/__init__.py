@@ -1,57 +1,39 @@
-"""frames2py -- Non-blocking event-to-frame accumulation engine.
+"""Frames2Py: live, decoupled observation of event-camera state.
 
-A formalized, lock-free engine for real-time event camera visualization
-that **never blocks the processing pipeline**.  Designed as the "PyTorch
-of event systems" -- composable, backend-agnostic, and open-source.
+A producer feeds events to ``Engine.ingest()``, which accumulates them through a
+kernel and publishes snapshots. Any number of consumers read them with
+``Engine.snapshot()`` at their own pace; the producer never waits on a consumer.
+
+``Accumulator`` is the same accumulation without publication, for synchronous use.
 
 Quick start::
 
     import frames2py
 
-    engine = frames2py.Engine(sensor_size=(1280, 720), kernel="event_count")
-    engine.ingest(events)  # non-blocking
-    result = engine.latest_snapshot()
-    if result is not None:
-        frame, meta = result
-
-Architecture:
-    - **Plane A** -- Ingest + Accumulate (``Engine``)
-    - **Plane B** -- Snapshot Bridge (seqlock, double-buffered)
-    - **Plane C** -- Async Consumers (``Viewer``, ``Recorder``, ``Telemetry``)
+    engine = frames2py.Engine((1280, 720), "event_count")
+    engine.ingest(events)  # 1-D structured array of frames2py.EVENT_DTYPE
+    snapshot = engine.snapshot()  # shared and read-only; snapshot.copy() for your own
+    if snapshot is not None:
+        frame, meta = snapshot.frame, snapshot.meta
 """
 
-from frames2py.consumers.recorder import Recorder
-from frames2py.consumers.telemetry import Telemetry, TelemetrySample
-from frames2py.consumers.viewer import Viewer
-from frames2py.core.engine import Engine
-from frames2py.core.types import (
-    EVENT_DTYPE,
-    BatchMeta,
-    EngineStats,
-    EventBatch,
-    FrameView,
-    KernelState,
-    OverflowPolicy,
-    SnapshotMeta,
-)
-from frames2py.kernels.base import Kernel
-
-__version__ = "0.1.0"
+from frames2py._accumulator import Accumulator
+from frames2py._engine import Engine
+from frames2py._events import EVENT_DTYPE
+from frames2py._types import EngineStats, SnapshotMeta
+from frames2py.kernels import EventCount, ExpDecay, Polarity, TimeSurface, TimestampDecay
 
 __all__ = [
+    "Accumulator",
     "Engine",
-    "Viewer",
-    "Recorder",
-    "Telemetry",
-    "TelemetrySample",
     "EVENT_DTYPE",
-    "BatchMeta",
+    "EventCount",
+    "Polarity",
+    "TimeSurface",
+    "ExpDecay",
+    "TimestampDecay",
     "EngineStats",
-    "EventBatch",
-    "FrameView",
-    "KernelState",
-    "OverflowPolicy",
     "SnapshotMeta",
-    "Kernel",
-    "__version__",
 ]
+
+__version__ = "0.1.0"

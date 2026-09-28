@@ -9,7 +9,16 @@ import numpy as np
 import pytest
 
 from tests.contract.api import EVENT_DTYPE, accumulated, impl
-from tests.contract.helpers import ALL, KERNELS, SENSOR, assert_matches, events, random_events
+from tests.contract.helpers import (
+    ALL,
+    BACKWARD_JUMP,
+    FORWARD_SPIKE,
+    KERNELS,
+    SENSOR,
+    assert_matches,
+    events,
+    random_events,
+)
 
 HOUR_MS = 3_600_000.0
 
@@ -33,34 +42,50 @@ class TestSnapshots:
             batch = random_events(seed, 40)
             engine.ingest(batch)
             oracle.accumulate(batch)
-            frame, meta = engine.snapshot()
+            snap = engine.snapshot()
+            frame, meta = snap.frame, snap.meta
             assert_matches(frame, oracle)
             assert meta.watermark == oracle.watermark
             _publish(oracle, case.windowed)
 
-    def test_reads_are_non_destructive_copies(self) -> None:
+    def test_reads_share_one_read_only_publication(self) -> None:
         engine = KERNELS["event_count"].engine(interval_ms=0.0)
         engine.ingest(events((1, 1, 1, 0), (2, 1, 1, 0)))
-        first, meta = engine.snapshot()
-        expected = first.copy()
-        first[...] = 99
+        first = engine.snapshot()
+        expected = first.frame.copy()
+        with pytest.raises(ValueError):
+            first.frame[...] = 99
         for _ in range(3):
-            frame, again = engine.snapshot()
-            np.testing.assert_array_equal(frame, expected)
-            assert again.sequence == meta.sequence
+            again = engine.snapshot()
+            np.testing.assert_array_equal(again.frame, expected)
+            assert again.meta == first.meta
+
+    def test_a_held_snapshot_never_changes(self) -> None:
+        for kernel in ALL:
+            engine = KERNELS[kernel].engine(interval_ms=0.0)
+            engine.ingest(random_events(1, 40))
+            held = engine.snapshot()
+            frame, meta = held.frame.copy(), held.meta
+            for seed in range(2, 5):
+                engine.ingest(random_events(seed, 40))
+            engine.reset()
+            engine.ingest(random_events(9, 40))
+            np.testing.assert_array_equal(held.frame, frame)
+            assert held.meta == meta
 
     def test_sequence_increases_with_every_publication(self) -> None:
         engine = KERNELS["event_count"].engine(interval_ms=0.0)
         seen = []
         for t in range(5):
             engine.ingest(events((t, 1, 1, 0)))
-            seen.append(engine.snapshot()[1].sequence)
+            seen.append(engine.snapshot().meta.sequence)
         assert all(a < b for a, b in zip(seen, seen[1:]))
 
     def test_watermark_is_none_when_nothing_was_accumulated(self) -> None:
         engine = KERNELS["time_surface"].engine(interval_ms=0.0)
         engine.ingest(events((50, SENSOR[0], 0, 0)))
-        frame, meta = engine.snapshot()
+        snap = engine.snapshot()
+        frame, meta = snap.frame, snap.meta
         assert meta.watermark is None
         assert not frame.any()
 
@@ -71,7 +96,8 @@ class TestSnapshots:
         for batch in (events((0, 1, 1, 0), (30, 2, 2, 1)), events((5, 1, 1, 1)), events((9_999, SENSOR[0], 0, 0))):
             engine.ingest(batch)
             oracle.accumulate(batch)
-            frame, meta = engine.snapshot()
+            snap = engine.snapshot()
+            frame, meta = snap.frame, snap.meta
             assert meta.watermark == 30
             assert_matches(frame, oracle)
 
@@ -88,7 +114,7 @@ class TestCadence:
         engine.ingest(events((1, 1, 1, 0)))
         engine.ingest(events())
         assert engine.stats.snapshots_published == 2
-        assert not engine.snapshot()[0].any()
+        assert not engine.snapshot().frame.any()
 
     def test_first_ingest_publishes_then_at_most_once_per_interval(self) -> None:
         engine = KERNELS["event_count"].engine(interval_ms=HOUR_MS)
@@ -97,7 +123,7 @@ class TestCadence:
         for t in range(2, 10):
             engine.ingest(events((t, 1, 1, 0)))
         assert engine.stats.snapshots_published == 1
-        assert int(engine.snapshot()[0].sum()) == 1
+        assert int(engine.snapshot().frame.sum()) == 1
 
     def test_first_ingest_after_the_interval_publishes(self) -> None:
         engine = KERNELS["event_count"].engine(interval_ms=5.0)
@@ -118,13 +144,13 @@ class TestWindowedAndRunning:
         for batch in (events((1, 1, 1, 1)), events((2, 3, 2, 0)), events((3, 1, 1, 0))):
             engine.ingest(batch)
             oracle.accumulate(batch)
-            assert_matches(engine.snapshot()[0], oracle)
+            assert_matches(engine.snapshot().frame, oracle)
             _publish(oracle, case.windowed)
 
     def test_time_surface_timestamps_stay_exact(self) -> None:
         engine = KERNELS["time_surface"].engine(interval_ms=0.0)
         engine.ingest(events((20_000_001, 1, 1, 0), (2**63 - 1, 2, 1, 1)))
-        frame = engine.snapshot()[0]
+        frame = engine.snapshot().frame
         assert [int(frame[1, 1]), int(frame[1, 2])] == [20_000_001, 2**63 - 1]
         assert frame.dtype == np.uint64
 
@@ -133,13 +159,13 @@ class TestWindowedAndRunning:
         batch["x"], batch["y"] = 1, 1
         engine = impl.Engine(SENSOR, impl.ExpDecay(0.5), snapshot_interval_ms=0.0)
         engine.ingest(batch)
-        assert engine.snapshot()[0][1, 1] == np.float32(200_000.0)
+        assert engine.snapshot().frame[1, 1] == np.float32(200_000.0)
 
     def test_exp_decay_decays_once_per_ingest(self) -> None:
         engine = impl.Engine(SENSOR, impl.ExpDecay(0.5), snapshot_interval_ms=0.0)
         for _ in range(3):
             engine.ingest(events((0, 1, 1, 0)))
-        assert engine.snapshot()[0][1, 1] == np.float32(1.75)
+        assert engine.snapshot().frame[1, 1] == np.float32(1.75)
 
 
 class TestLifecycle:
@@ -156,7 +182,8 @@ class TestLifecycle:
         oracle.accumulate(pending)
         engine.stop()
         assert engine.stats.snapshots_published == 2
-        frame, meta = engine.snapshot()
+        snap = engine.snapshot()
+        frame, meta = snap.frame, snap.meta
         assert_matches(frame, oracle)
         assert meta.watermark == 6
 
@@ -166,7 +193,7 @@ class TestLifecycle:
         engine.ingest(events((2, SENSOR[0], 0, 0)))  # out of bounds: nothing accumulated
         engine.stop()
         assert engine.stats.snapshots_published == 1
-        assert int(engine.snapshot()[0][1, 1]) == 1
+        assert int(engine.snapshot().frame[1, 1]) == 1
 
     def test_stop_before_any_ingest_publishes_nothing(self) -> None:
         engine = KERNELS["event_count"].engine()
@@ -178,14 +205,16 @@ class TestLifecycle:
         engine = KERNELS["event_count"].engine(interval_ms=0.0)
         engine.ingest(events((1, 1, 1, 0)))
         engine.stop()
-        frame, meta = engine.snapshot()
+        snap = engine.snapshot()
+        frame, meta = snap.frame, snap.meta
         stats = engine.stats
         engine.ingest(events((2, 2, 2, 0)))
         engine.ingest(events((2**63, 1, 1, 0)))  # the lifecycle check comes first
         after = engine.stats
         assert (after.events_ingested, after.events_out_of_bounds, after.snapshots_published) == (
             stats.events_ingested, stats.events_out_of_bounds, stats.snapshots_published)
-        again, again_meta = engine.snapshot()
+        snap = engine.snapshot()
+        again, again_meta = snap.frame, snap.meta
         np.testing.assert_array_equal(again, frame)
         assert again_meta.sequence == meta.sequence
 
@@ -195,7 +224,8 @@ class TestLifecycle:
         engine.stop()
         engine.start()
         engine.ingest(events((2, 2, 2, 0)))
-        frame, meta = engine.snapshot()
+        snap = engine.snapshot()
+        frame, meta = snap.frame, snap.meta
         assert int(frame[2, 2]) == 1
         assert meta.watermark == 2
 
@@ -203,15 +233,43 @@ class TestLifecycle:
     def test_watermark_spans_windows_until_reset(self, kernel: str) -> None:
         engine = KERNELS[kernel].engine(interval_ms=0.0)
         engine.ingest(events((100, 1, 1, 1)))
-        assert engine.snapshot()[1].watermark == 100
+        assert engine.snapshot().meta.watermark == 100
         engine.ingest(events())  # publishes an empty window
-        frame, meta = engine.snapshot()
+        snap = engine.snapshot()
+        frame, meta = snap.frame, snap.meta
         assert not frame.any()
         assert meta.watermark == 100
         engine.reset()
         assert engine.snapshot() is None
         engine.ingest(events((200, 2, 2, 0)))
-        assert engine.snapshot()[1].watermark == 200
+        assert engine.snapshot().meta.watermark == 200
+
+    def test_first_ingest_after_reset_publishes(self) -> None:
+        engine = KERNELS["event_count"].engine(interval_ms=HOUR_MS)
+        engine.ingest(events((1, 1, 1, 0)))
+        engine.reset()
+        engine.ingest(events((2, 2, 2, 0)))
+        assert engine.stats.snapshots_published == 1
+        snap = engine.snapshot()
+        frame, meta = snap.frame, snap.meta
+        assert int(frame[2, 2]) == 1 and meta.watermark == 2
+
+    def test_sequence_keeps_increasing_across_reset(self) -> None:
+        engine = KERNELS["event_count"].engine(interval_ms=0.0)
+        engine.ingest(events((1, 1, 1, 0)))
+        engine.ingest(events((2, 1, 1, 0)))
+        before = engine.snapshot().meta.sequence
+        engine.reset()
+        engine.ingest(events((3, 1, 1, 0)))
+        assert engine.snapshot().meta.sequence > before
+
+    def test_uptime_keeps_counting_across_reset(self) -> None:
+        engine = KERNELS["event_count"].engine()
+        while engine.stats.uptime_ns < 2_000_000:  # elapsed time is the input here
+            pass
+        before = engine.stats.uptime_ns
+        engine.reset()
+        assert engine.stats.uptime_ns >= before
 
     @pytest.mark.parametrize("kernel", ALL)
     def test_reset_clears_state_counters_and_snapshot(self, kernel: str) -> None:
@@ -226,9 +284,38 @@ class TestLifecycle:
         batch = events((3, 1, 1, 1))
         engine.ingest(batch)
         oracle.accumulate(batch)
-        frame, meta = engine.snapshot()
+        snap = engine.snapshot()
+        frame, meta = snap.frame, snap.meta
         assert_matches(frame, oracle)
         assert meta.watermark == 3
+
+    @pytest.mark.filterwarnings("error")
+    @pytest.mark.parametrize(
+        ("batches", "watermark"), [(BACKWARD_JUMP, 10**12), (FORWARD_SPIKE, 2**62)], ids=["backward", "forward"]
+    )
+    @pytest.mark.parametrize("kernel", ALL)
+    def test_reset_recovers_from_a_timestamp_discontinuity(
+        self, kernel: str, batches: tuple[np.ndarray, ...], watermark: int
+    ) -> None:
+        case = KERNELS[kernel]
+        engine = case.engine(interval_ms=0.0)
+        oracle = case.oracle()
+        for batch in batches:
+            engine.ingest(batch)
+            oracle.accumulate(batch)
+            snap = engine.snapshot()
+            assert_matches(snap.frame, oracle)
+            _publish(oracle, case.windowed)
+        assert snap.meta.watermark == watermark
+        engine.reset()
+        assert engine.snapshot() is None
+        fresh = case.oracle()
+        clean = events((20, 1, 1, 0), (25, 2, 3, 1))
+        engine.ingest(clean)
+        fresh.accumulate(clean)
+        snap = engine.snapshot()
+        assert_matches(snap.frame, fresh)
+        assert snap.meta.watermark == 25
 
 
 class TestStats:
@@ -267,7 +354,7 @@ class TestStats:
         batch["y"] = (np.arange(len(batch)) // SENSOR[0]) % SENSOR[1]
         engine = KERNELS["event_count"].engine(interval_ms=0.0)
         engine.ingest(batch)
-        assert int(engine.snapshot()[0].sum(dtype=np.uint64)) == len(batch)
+        assert int(engine.snapshot().frame.sum(dtype=np.uint64)) == len(batch)
         assert accumulated(engine.stats) == len(batch)
 
     def test_uptime_does_not_go_backwards(self) -> None:

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import sys
+import warnings
 from typing import Any
 
 import numpy as np
@@ -11,6 +13,8 @@ import pytest
 from tests.contract.api import EVENT_DTYPE, impl
 from tests.contract.helpers import (
     ALL,
+    BACKWARD_JUMP,
+    FORWARD_SPIKE,
     KERNELS,
     ORDER_INVARIANT,
     SENSOR,
@@ -22,6 +26,9 @@ from tests.contract.helpers import (
 from tests.oracle import ReferenceAccumulator
 
 SLOW = os.environ.get("FRAMES2PY_SLOW_TESTS") == "1"
+
+_OVERFLOW_EDGE = 2.0**63 / sys.float_info.max
+"""Below this tau, a timestamp difference of 2**63 divided by tau exceeds float64's range."""
 
 
 def _one_pixel(n: int, t0: int = 0, p: int = 1) -> np.ndarray:
@@ -155,6 +162,22 @@ class TestExpDecay:
         assert whole.read()[1, 1] == np.float32(2.0)
         assert split.read()[1, 1] == np.float32(1.5)
 
+    def test_hot_pixel_over_many_calls(self) -> None:
+        # Thousands of increments into one pixel: storage that rounds each addition to
+        # float32 drifts several ULP from the true value; the output must not.
+        sensor = (32, 24)
+        acc = impl.Accumulator(sensor, impl.ExpDecay(0.999))
+        oracle = ReferenceAccumulator("exp_decay", sensor, decay=0.999)
+        rng = np.random.default_rng(11)
+        for call in range(3_000):
+            flat = np.concatenate([np.full(60, 5), rng.integers(0, sensor[0] * sensor[1], 20)])
+            batch = np.zeros(len(flat), dtype=EVENT_DTYPE)
+            batch["t"], batch["x"], batch["y"] = call, flat % sensor[0], flat // sensor[0]
+            acc.accumulate(batch)
+            oracle.accumulate(batch)
+            if call % 750 == 749:
+                assert_matches(acc.read(), oracle)
+
     def test_across_renormalisation(self) -> None:
         # 400 calls at decay 0.5 take the global scale to 2**-400, far past float32 and
         # float64 exponent range, so any correct lazy scale must renormalise.
@@ -220,6 +243,28 @@ class TestTimestampDecay:
             assert_matches(acc.read(), oracle)
         assert acc.watermark == oracle.watermark
 
+    def test_one_call_spanning_past_float64_exp_range(self) -> None:
+        # The first call spans 1000 tau; exp(1000) overflows float64.
+        acc, oracle = self._pair(tau=1.0)
+        self._feed(acc, oracle, events((0, 1, 1, 0), (1_000, 2, 1, 0), (999, 2, 1, 1)))
+        assert_matches(acc.read(), oracle)
+
+    @pytest.mark.parametrize(
+        "tau", [5e-324, 1e-300, _OVERFLOW_EDGE * (1 - 2**-40), _OVERFLOW_EDGE * (1 + 2**-40), 1e-280]
+    )
+    def test_tiny_tau_across_the_whole_timestamp_range(self, tau: float) -> None:
+        # The oracle can't evaluate these: every event older than the watermark contributes
+        # 0, each event at the watermark 1. No warning, so none can raise mid-call.
+        acc = impl.Accumulator(SENSOR, impl.TimestampDecay(tau))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            acc.accumulate(events((0, 1, 1, 0), (2**63 - 1, 2, 1, 0)))
+            acc.accumulate(events((5, 3, 1, 0), (2**63 - 1, 2, 1, 1)))
+            frame = acc.read()
+        expected = np.zeros_like(frame)
+        expected[1, 2] = 2.0
+        np.testing.assert_array_equal(frame, expected)
+
     def test_extreme_timestamp_then_ordinary_ones(self) -> None:
         acc, oracle = self._pair()
         self._feed(acc, oracle, events((5, 1, 1, 0)), events((2**63 - 1, 2, 2, 0)), events((100, 1, 1, 0)))
@@ -233,3 +278,64 @@ class TestTimestampDecay:
         for part in partitions(batch, seed, parts=7):
             acc.accumulate(part)
         assert_matches(acc.read(), oracle)
+
+
+@pytest.mark.filterwarnings("error")
+class TestTimestampDiscontinuities:
+    def _feed(self, kernel: str, batches: list[np.ndarray], one_call: bool) -> Any:
+        acc = KERNELS[kernel].accumulator()
+        oracle = KERNELS[kernel].oracle()
+        for batch in [np.concatenate(batches)] if one_call else batches:
+            acc.accumulate(batch)
+            oracle.accumulate(batch)
+        assert_matches(acc.read(), oracle)
+        assert acc.watermark == oracle.watermark
+        return acc
+
+    def _timestamps_do_not_matter(self, acc: dict[str, Any], batches: list[np.ndarray], one_call: bool) -> None:
+        zeroed = [batch.copy() for batch in batches]
+        for batch in zeroed:
+            batch["t"] = 0
+        for kernel in ("event_count", "polarity", "exp_decay"):
+            np.testing.assert_array_equal(acc[kernel].read(), self._feed(kernel, zeroed, one_call).read())
+
+    @pytest.mark.parametrize("one_call", [False, True])
+    def test_backward_jump(self, one_call: bool) -> None:
+        batches = list(BACKWARD_JUMP)
+        acc = {kernel: self._feed(kernel, batches, one_call) for kernel in ALL}
+        assert {a.watermark for a in acc.values()} == {10**12}
+        self._timestamps_do_not_matter(acc, batches, one_call)
+        assert int(acc["event_count"].read()[1, 1]) == 2
+        # Per pixel: the restart is hidden where an older-clock timestamp is larger.
+        surface = acc["time_surface"].read()
+        assert (int(surface[1, 1]), int(surface[2, 3])) == (10**12, 7)
+        # Global: every restarted-clock event is evaluated at the unchanged watermark.
+        decay = acc["timestamp_decay"].read()
+        assert (decay[1, 1], decay[2, 3]) == (np.float32(1.0), np.float32(0.0))
+
+    @pytest.mark.parametrize("one_call", [False, True])
+    def test_forward_spike(self, one_call: bool) -> None:
+        batches = list(FORWARD_SPIKE)
+        acc = {kernel: self._feed(kernel, batches, one_call) for kernel in ALL}
+        assert {a.watermark for a in acc.values()} == {2**62}
+        self._timestamps_do_not_matter(acc, batches, one_call)
+        assert int(acc["event_count"].read()[1, 1]) == 2
+        # Per pixel: only the spike's pixel holds the spike.
+        surface = acc["time_surface"].read()
+        assert (int(surface[1, 1]), int(surface[2, 3]), int(surface[3, 5])) == (1_010, 1_002, 2**62)
+        # Global: everything but the spike, before it and after it, reads 0.
+        decay = acc["timestamp_decay"].read()
+        assert decay[3, 5] == np.float32(1.0)
+        assert np.count_nonzero(decay) == 1
+
+    @pytest.mark.parametrize("batches", [BACKWARD_JUMP, FORWARD_SPIKE], ids=["backward", "forward"])
+    @pytest.mark.parametrize("kernel", ALL)
+    def test_reset_recovers(self, kernel: str, batches: tuple[np.ndarray, ...]) -> None:
+        acc = self._feed(kernel, list(batches), one_call=False)
+        acc.reset()
+        fresh = KERNELS[kernel].oracle()
+        clean = events((20, 1, 1, 0), (25, 2, 3, 1))
+        acc.accumulate(clean)
+        fresh.accumulate(clean)
+        assert_matches(acc.read(), fresh)
+        assert acc.watermark == 25

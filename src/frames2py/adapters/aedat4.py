@@ -1,191 +1,139 @@
-"""AEDAT4 binary event file adapter.
+"""Read iniVation AEDAT 4.0 files through dv-processing.
 
-Parses the AEDAT4 format used by iniVation cameras.  This is a
-**pure-Python** parser -- no dependency on ``dv-processing`` or any
-vendor SDK.  It reads the AEDAT4 binary container directly.
+::
 
-AEDAT4 file structure:
-    - Magic number: ``#!AER-DAT4.0\\r\\n`` (16 bytes)
-    - IOHeader (flatbuffers) length (4 bytes LE) + IOHeader data
-    - Sequence of data packets, each with:
-        - Packet header: stream_id (4B), size (4B)
-        - Packet body: flatbuffers-encoded event packet
+    from frames2py.adapters import aedat4
 
-For simplicity and zero-dependency parsing, this adapter reads the
-raw event data assuming the standard CD event layout (polarity events).
+    with aedat4.open("recording.aedat4") as reader:
+        engine = frames2py.Engine(reader.sensor_size, "polarity")
+        for events in reader:
+            engine.ingest(events)
+
+dv-processing does the decoding; this module maps its events to ``EVENT_DTYPE``. Needs the
+``frames2py[aedat4]`` extra.
+
+Throughput: with ``batch_size=None`` each file packet is one array, and packets can be small
+(a median of 36 to 944 events in the files tested). At that size the Engine's per-call cost
+dominates; ``batch_size=10_000`` ingested the same events 2 to 6 times faster. Larger batches
+hold more events in memory and deliver them later.
+
+Which stream: dv-processing reads the first camera named in the file's description; of its
+event streams, the one named ``events`` is read, or the only one there is. dv-processing's
+Python API doesn't expose their order in the description, so the adapter fails closed:
+several event streams with none named ``events``, or a first camera with no event stream,
+raise ``ValueError``.
+
+Timestamps are the file's int64 microseconds, unchanged and in file order (the format page
+describes them as Unix time; recordings from other sources may use another epoch). A negative
+timestamp raises ``ValueError`` when iteration reaches it; it is never clamped. Polarity maps
+to ``p = 1`` for ON and ``0`` for OFF. Geometry is the stream's resolution; an explicit
+``sensor_size`` must match it, and a stream without one needs ``sensor_size``.
+
+Known limitation: dv-processing has been seen to give no result for minutes on a file with
+corrupted bytes in the middle of a packet. That happens inside dv-processing, before any
+events reach this module.
 """
 
 from __future__ import annotations
 
-import struct
 from collections.abc import Iterator
-from pathlib import Path
+from typing import Any
 
 import numpy as np
 
-from frames2py.core.types import EVENT_DTYPE, BatchMeta, EventBatch
+from frames2py._events import EVENT_DTYPE, EventArray
+from frames2py.adapters._reader import (
+    PathArg,
+    Reader,
+    check_batch_size,
+    check_readable,
+    check_sensor_size,
+    merge_sensor_size,
+    require,
+)
 
-# AEDAT4 magic bytes
-_MAGIC = b"#!AER-DAT4.0\r\n"
-
-# CD (Change Detection) event struct: 8 bytes packed
-#   timestamp: int32 (microseconds), x: uint16, y: uint16 with polarity in MSB of y
-_CD_EVENT_DTYPE = np.dtype([
-    ("timestamp", "<i4"),
-    ("address", "<u4"),
-])
+__all__ = ["open"]
 
 
-def from_aedat4(
-    path: str,
-    chunk_size: int = 50_000,
+def open(
+    path: PathArg,
+    *,
     sensor_size: tuple[int, int] | None = None,
-) -> Iterator[tuple[EventBatch, BatchMeta]]:
-    """Yield event batches from an AEDAT4 file.
+    batch_size: int | None = None,
+) -> Reader:
+    """Open an AEDAT 4.0 file for one pass over its first event stream.
 
-    This parser handles the most common AEDAT4 variant: files containing
-    polarity (CD) events.  It extracts ``(t, x, y, p)`` from the binary
-    stream.
+    Args:
+        path: The ``.aedat4`` file.
+        sensor_size: ``(width, height)``; required if the stream has no resolution.
+        batch_size: Events per yielded array (the last may have fewer), or ``None`` for
+            the file's own packets.
 
-    Parameters:
-        path: Filesystem path to the ``.aedat4`` file.
-        chunk_size: Maximum events per yielded batch.
-        sensor_size: ``(width, height)`` if known; inferred from data
-            otherwise.
-
-    Yields:
-        ``(EventBatch, BatchMeta)`` tuples.
+    Raises:
+        ImportError: dv-processing is not installed (``frames2py[aedat4]``).
+        FileNotFoundError: *path* doesn't exist.
+        OSError: *path* is a directory or can't be read.
+        ValueError: dv-processing can't read the file, it has no event stream, the stream
+            has no resolution and no ``sensor_size`` was given, or ``sensor_size``
+            conflicts with it.
     """
-    filepath = Path(path)
-    if not filepath.exists():
-        raise FileNotFoundError(f"AEDAT4 file not found: {path}")
-
-    raw_events = _parse_aedat4_events(filepath)
-
-    if len(raw_events) == 0:
-        return
-
-    # Convert to EVENT_DTYPE
-    all_events = _raw_to_event_dtype(raw_events)
-
-    # Infer sensor size from max coordinates if not provided
-    if sensor_size is None and len(all_events) > 0:
-        max_x = int(all_events["x"].max()) + 1
-        max_y = int(all_events["y"].max()) + 1
-        sensor_size = (max_x, max_y)
-
-    meta_base = BatchMeta(
-        monotonic=True,
-        source="aedat4",
-        sensor_size=sensor_size,
-    )
-
-    for start in range(0, len(all_events), chunk_size):
-        end = min(start + chunk_size, len(all_events))
-        yield all_events[start:end], meta_base
+    explicit = check_sensor_size(sensor_size)
+    size = check_batch_size(batch_size)
+    dv = require("dv_processing", "aedat4")
+    name = check_readable(path)
+    try:
+        recording = dv.io.MonoCameraRecording(name)
+        stream = _event_stream(recording)
+        resolution = recording.getEventResolution(stream)
+    except RuntimeError as exc:
+        raise ValueError(f"dv-processing could not read {name!r}: {_first_line(exc)}") from exc
+    source = None if resolution is None else (int(resolution[0]), int(resolution[1]))
+    geometry = merge_sensor_size(explicit, source, "event stream")
+    if geometry is None:
+        raise ValueError("the event stream has no resolution; pass sensor_size=(width, height)")
+    holder = [recording]
+    return Reader(lambda: _batches(holder, stream), holder.clear, geometry, size)
 
 
-def _parse_aedat4_events(filepath: Path) -> np.ndarray:
-    """Parse raw CD events from an AEDAT4 binary file.
-
-    Returns a structured array with fields ``timestamp`` (int32) and
-    ``address`` (uint32).
-    """
-    data = filepath.read_bytes()
-    offset = 0
-
-    # Validate magic
-    if not data[:len(_MAGIC)] == _MAGIC:
-        raise ValueError("Not a valid AEDAT4 file (bad magic number)")
-    offset += len(_MAGIC)
-
-    # Skip IOHeader (flatbuffers): 4-byte LE length + payload
-    if offset + 4 > len(data):
-        return np.array([], dtype=_CD_EVENT_DTYPE)
-    header_size = struct.unpack_from("<I", data, offset)[0]
-    offset += 4 + header_size
-
-    # Read packets
-    all_event_bytes = bytearray()
-    while offset + 8 <= len(data):
-        # Packet header: stream_id (4B), packet_size (4B)
-        _stream_id, packet_size = struct.unpack_from("<II", data, offset)
-        offset += 8
-
-        if offset + packet_size > len(data):
-            break
-
-        packet_data = data[offset : offset + packet_size]
-        offset += packet_size
-
-        # Heuristic: CD event packets have sizes that are multiples of 8
-        # (each CD event is 8 bytes).  Skip non-event packets.
-        if packet_size > 0 and packet_size % 8 == 0:
-            all_event_bytes.extend(packet_data)
-
-    if len(all_event_bytes) == 0:
-        return np.array([], dtype=_CD_EVENT_DTYPE)
-
-    return np.frombuffer(bytes(all_event_bytes), dtype=_CD_EVENT_DTYPE)
+def _event_stream(recording: Any) -> str:
+    streams = [name for name in recording.getStreamNames() if recording.isStreamOfEventType(name)]
+    if "events" in streams:
+        return "events"
+    if len(streams) == 1:
+        return str(streams[0])
+    if not streams:
+        raise ValueError(f"the file's first camera ({recording.getCameraName()!r}) has no event stream")
+    raise ValueError(f"the file's first camera has several event streams and none named 'events': {streams}")
 
 
-def _raw_to_event_dtype(raw: np.ndarray) -> EventBatch:
-    """Convert raw CD events to the canonical EVENT_DTYPE.
-
-    The AEDAT4 CD event address field packs x, y, and polarity:
-        - bits 0-15: x coordinate
-        - bits 16-30: y coordinate
-        - bit 31: polarity (1 = ON, 0 = OFF)
-    """
-    n = len(raw)
-    out = np.empty(n, dtype=EVENT_DTYPE)
-
-    addr = raw["address"]
-    out["x"] = (addr & 0x7FFF).astype(np.uint16)           # bits 0-14
-    out["y"] = ((addr >> 15) & 0x7FFF).astype(np.uint16)   # bits 15-29
-    out["p"] = ((addr >> 31) & 0x1).astype(np.uint8)       # bit 31
-
-    # Timestamps: convert from int32 microseconds to uint64
-    out["t"] = raw["timestamp"].astype(np.uint64)
-
-    return out
+def _batches(holder: list[Any], stream: str) -> Iterator[EventArray]:
+    while holder:
+        try:
+            store = holder[0].getNextEventBatch(stream)
+        except RuntimeError as exc:
+            raise ValueError(f"dv-processing failed reading the event stream: {_first_line(exc)}") from exc
+        if store is None:
+            return
+        yield _to_events(store.numpy())
 
 
-def to_aedat4(
-    path: str,
-    events: EventBatch,
-    sensor_size: tuple[int, int] = (640, 480),
-) -> None:
-    """Write events to a minimal AEDAT4 file.
+def _to_events(packet: Any) -> EventArray:
+    """dv-processing's ``timestamp <i8, x <i2, y <i2, polarity i1`` records as ``EVENT_DTYPE``."""
+    t, x, y = packet["timestamp"], packet["x"], packet["y"]
+    if len(packet):
+        if int(t.min()) < 0:
+            raise ValueError(f"the file has a negative timestamp ({int(t.min())} us); it is not clamped")
+        if int(x.min()) < 0 or int(y.min()) < 0:
+            raise ValueError("the file has an event with a negative coordinate")
+    events = np.empty(len(packet), dtype=EVENT_DTYPE)
+    events["t"] = t
+    events["x"] = x
+    events["y"] = y
+    events["p"] = packet["polarity"] != 0
+    return events
 
-    Creates a valid AEDAT4 container with a single polarity event stream.
 
-    Parameters:
-        path: Output file path.
-        events: Event array with dtype :data:`EVENT_DTYPE`.
-        sensor_size: ``(width, height)`` of the sensor.
-    """
-    filepath = Path(path)
-
-    # Pack events into CD format
-    n = len(events)
-    raw = np.empty(n, dtype=_CD_EVENT_DTYPE)
-    raw["timestamp"] = events["t"].astype(np.int32)
-    addr = (
-        events["x"].astype(np.uint32)
-        | (events["y"].astype(np.uint32) << 15)
-        | (events["p"].astype(np.uint32) << 31)
-    )
-    raw["address"] = addr
-
-    event_bytes = raw.tobytes()
-
-    with filepath.open("wb") as f:
-        # Magic
-        f.write(_MAGIC)
-        # Minimal IOHeader (empty flatbuffer -- 4 zero bytes for size)
-        f.write(struct.pack("<I", 0))
-        # Single event packet
-        stream_id = 0
-        f.write(struct.pack("<II", stream_id, len(event_bytes)))
-        f.write(event_bytes)
+def _first_line(exc: BaseException) -> str:
+    """dv-processing appends a native stack trace to its messages; the cause keeps it."""
+    lines = str(exc).strip().splitlines()
+    return lines[0] if lines else type(exc).__name__

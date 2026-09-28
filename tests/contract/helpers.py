@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -14,16 +15,38 @@ from tests.oracle import ReferenceAccumulator, float32_ulp_distance
 
 SENSOR = (6, 4)  # width 6, height 4: frames are (4, 6)
 
+GIL_ENABLED: bool = getattr(sys, "_is_gil_enabled", lambda: True)()
+
+VERIFIED_FREE_THREADED = {(3, 14)}
+"""Free-threaded minor versions the publisher's handoff is verified on."""
+
+SUPPORTED_RUNTIME = GIL_ENABLED or tuple(sys.version_info[:2]) in VERIFIED_FREE_THREADED
+"""Whether the Engine accepts this interpreter: any build with the GIL, or a verified
+free-threaded minor version with it disabled."""
+
 TIMESTAMP_DECAY_MAX_ULP = 1
 """Tolerance on this suite's workloads, not an API guarantee."""
 
 EXP_DECAY_MAX_ULP = 1
-"""Tolerance on this suite's workloads, not an API guarantee. Not yet derived from a
-numerical analysis of the implementation."""
+"""Tolerance on this suite's workloads, not an API guarantee."""
 
 
 def events(*rows: tuple[int, int, int, int]) -> NDArray[Any]:
     return np.array(list(rows), dtype=EVENT_DTYPE)
+
+
+BACKWARD_JUMP = (
+    events((10**12, 1, 1, 0), (10**12 - 3, 4, 2, 1)),
+    events((5, 1, 1, 1), (7, 3, 2, 0)),
+)
+"""A long-running source clock, then the same source after its clock restarted near 0."""
+
+FORWARD_SPIKE = (
+    events((1_000, 1, 1, 0), (1_002, 3, 2, 1)),
+    events((2**62, 5, 3, 0)),
+    events((1_010, 1, 1, 1)),
+)
+"""Ordinary timestamps, one far-future timestamp, then ordinary timestamps again."""
 
 
 def random_events(

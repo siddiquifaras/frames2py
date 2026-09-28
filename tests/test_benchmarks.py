@@ -4,11 +4,14 @@ results and interpretation. No timing assertions: these must pass on any machine
 
 from __future__ import annotations
 
+import copy
+import functools
 import gc
 import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -18,7 +21,7 @@ import pytest
 
 from frames2py import EVENT_DTYPE
 
-from benchmarks import environment, report, results
+from benchmarks import environment, gate, power, report, results
 from benchmarks.__main__ import main
 from benchmarks.matrix import (
     GATE_THRESHOLD_EVENTS_PER_S,
@@ -28,8 +31,9 @@ from benchmarks.matrix import (
     prototype_baseline_cells,
 )
 from benchmarks.measure import Policy, measure_memory, nearest_rank, summarize, time_calls
-from benchmarks.runner import run_suite
+from benchmarks.runner import run_suite, timed_calls_for
 from benchmarks.targets import TARGETS, Level, Prepared
+from benchmarks.targets.v1 import engine_timed_calls, publication_schedule
 from benchmarks.workloads import Workload
 
 
@@ -156,6 +160,35 @@ class TestMeasurement:
         assert summary["latency_ns"]["p50"] == 2_000
         assert summary["latency_ns"]["max"] == 5_000
 
+    def test_sustained_throughput_counts_every_call(self) -> None:
+        # One slow call in four: invisible to the median, not to the sustained rate.
+        runs = [[1_000, 1_000, 1_000, 9_000]]
+        assert summarize(10, runs)["events_per_s"] == pytest.approx(10 / 1e-6)
+        sustained = summarize(10, runs, "sustained")
+        assert sustained["events_per_s"] == pytest.approx(40 / 12e-6)
+        assert sustained["statistic"] == "sustained"
+        with pytest.raises(ValueError):
+            summarize(10, runs, "mean")
+
+    def test_statistic_is_the_median_of_per_run_values(self) -> None:
+        runs = [[1_000], [2_000], [4_000], [8_000]]
+        assert summarize(1, runs)["events_per_s"] == pytest.approx((1 / 2e-6 + 1 / 4e-6) / 2)
+
+    def test_hooks_run_around_every_call_outside_the_timed_interval(self) -> None:
+        events: list[str] = []
+        batches = [np.full(1, i, dtype=EVENT_DTYPE) for i in range(4)]
+
+        def call(batch: np.ndarray) -> None:
+            events.append(f"call {int(batch['t'][0])}")
+
+        span: list[int] = []
+        samples, _ = time_calls(call, batches, 1, 3, before_call=lambda: events.append("before"),
+                                after_call=lambda: events.append("after"), span=span)
+        assert events == ["before", "call 0", "after"] + [
+            e for i in range(1, 4) for e in ("before", f"call {i}", "after")
+        ]
+        assert len(samples) == 3 and len(span) == 1 and span[0] >= sum(samples)
+
     def test_warmup_is_discarded_and_counters_cover_timed_calls_only(self) -> None:
         seen: list[int] = []
         batches = [np.full(1, i, dtype=EVENT_DTYPE) for i in range(6)]
@@ -198,18 +231,24 @@ class TestMeasurement:
 
 
 class _FakeTarget:
-    """Sums x over each batch; supports every kernel except timestamp_decay."""
+    """Sums x over each batch; supports every kernel except timestamp_decay, unless
+    *every_kernel*."""
 
     name = "fake"
 
-    def __init__(self, level: Level = "kernel") -> None:
+    def __init__(self, level: Level = "kernel", every_kernel: bool = False) -> None:
         self.level = level
+        self.statistic = "median_call" if level == "kernel" else "sustained"
+        self.every_kernel = every_kernel
         self.prepared = 0
 
     def supports(self, cell: Cell) -> bool:
-        return cell.kernel != "timestamp_decay"
+        return self.every_kernel or cell.kernel != "timestamp_decay"
 
-    def prepare(self, cell: Cell) -> Prepared:
+    def timed_calls(self, cell: Cell, default: int, warmup_calls: int) -> int:
+        return default
+
+    def prepare(self, cell: Cell, batches: Any = ()) -> Prepared:
         self.prepared += 1
         total = [0]
 
@@ -222,11 +261,13 @@ class _FakeTarget:
         return Prepared(call=call, counters=counters, details={"fresh": True})
 
     def describe(self) -> dict[str, Any]:
-        return {"name": self.name, "level": self.level}
+        return {"name": self.name, "level": self.level, "statistic": self.statistic}
 
 
-def _document(level: Level, cells: tuple[Cell, ...], policy: Policy) -> dict[str, Any]:
-    return run_suite("test", cells, _FakeTarget(level), policy, progress=lambda _: None,
+def _document(
+    level: Level, cells: tuple[Cell, ...], policy: Policy, every_kernel: bool = False
+) -> dict[str, Any]:
+    return run_suite("test", cells, _FakeTarget(level, every_kernel), policy, progress=lambda _: None,
                      process_per_run=False)
 
 
@@ -365,49 +406,371 @@ class TestProvenance:
         assert "clean working tree" not in report._tree_state(env)
 
 
-def _with_throughput(document: dict[str, Any], events_per_s: dict[Any, float]) -> dict[str, Any]:
+@functools.cache
+def _one_run_gate_documents() -> tuple[dict[str, Any], dict[str, Any]]:
+    policy = Policy(runs=1, timed_calls=1, memory_calls=0)
+    kernel, engine = (_document(level, gate_cells(), policy, every_kernel=True) for level in ("kernel", "engine"))
+    return kernel, engine
+
+
+def _gate_documents(runs: int = 5) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Kernel- and engine-level documents for every gate cell, from a clean tree."""
+    documents = []
+    for template in _one_run_gate_documents():
+        document = copy.deepcopy(template)
+        document["policy"]["runs"] = runs
+        document["environment"].update(tracked_changes=False, untracked_files=[])
+        for record in document["cells"]:
+            for key in ("checks", "runtime", "workload_sha256"):
+                record[key] = record[key] * runs
+            record["call_ns"] = record["call_ns"] * runs
+        documents.append(document)
+    return documents[0], documents[1]
+
+
+def _set_rates(document: dict[str, Any], rates: dict[Any, list[float]]) -> None:
+    """Give cells per-run throughputs, as one-call runs with the matching time."""
     for record in document["cells"]:
         condition = Cell.from_record(record).condition
-        if condition in events_per_s:
-            record["summary"]["events_per_s"] = events_per_s[condition]
-    return document
+        if condition in rates:
+            record["call_ns"] = [[round(record["batch_size"] / r * 1e9)] for r in rates[condition]]
+            n = len(rates[condition])
+            for key in ("checks", "runtime", "workload_sha256"):
+                record[key] = record[key][:1] * n
 
 
-class TestGateVerdicts:
-    def _documents(self, engine_speed: dict[Any, float]) -> tuple[dict[str, Any], dict[str, Any]]:
-        cells = tuple(c for c in gate_cells() if c.kernel == "event_count" and c.sensor_size == (346, 260))
-        policy = Policy(runs=1, timed_calls=1, memory_calls=0)
-        kernel = _with_throughput(_document("kernel", cells, policy), {c.condition: 25e6 for c in cells})
-        engine = _with_throughput(_document("engine", cells, policy),
-                                  {c.condition: engine_speed.get(c.condition, 25e6) for c in cells})
-        return kernel, engine
+def _uniform(rate: float, runs: int = 5) -> list[float]:
+    return [rate] * runs
 
-    def test_a_cell_passes_only_when_both_levels_reach_20m(self) -> None:
-        slow = gate_cells()[0].condition
-        kernel, engine = self._documents({slow: 19.9e6})
-        verdicts = {cell.condition: verdict for cell, verdict, _, _ in report.gate_verdicts(kernel, engine)}
-        assert verdicts[slow] == "fail"
-        measured = {c for c, v in verdicts.items() if v != "incomplete"}
-        assert len(measured) == 10
-        assert all(verdicts[c] == "pass" for c in measured - {slow})
-        assert sum(v == "incomplete" for v in verdicts.values()) == 140
 
-    def test_levels_cannot_be_swapped(self) -> None:
-        kernel, engine = self._documents({})
+class TestGateClassification:
+    def test_stage_one_band_edges(self) -> None:
+        assert gate.stage1(22.0e6) == "clear_pass"
+        assert gate.stage1(21.99e6) == "borderline"
+        assert gate.stage1(18.0e6) == "borderline"
+        assert gate.stage1(17.99e6) == "clear_miss"
+
+    def test_stage_two_needs_the_median_and_18_of_20_runs(self) -> None:
+        assert gate.stage2([20.5e6] * 18 + [19e6] * 2) == "stage2_pass"
+        assert gate.stage2([20.5e6] * 17 + [19e6] * 3) == "not_met"
+        assert gate.stage2([19.9e6] * 20) == "not_met"
+        assert gate.stage2([20.0e6] * 20) == "stage2_pass"
+
+    def test_a_cell_passes_only_when_both_levels_pass(self) -> None:
+        kernel, engine = _gate_documents()
+        cells = gate_cells()
+        everything = {c.condition: _uniform(30e6) for c in cells}
+        _set_rates(kernel, everything)
+        _set_rates(engine, {**everything, cells[0].condition: _uniform(10e6)})
+        result = gate.verdicts(kernel, engine)
+        assert result["cells"][0]["verdict"] == "NOT MET"
+        assert result["counts"] == {"PASS": 149, "NOT MET": 1, "INVALID": 0, "INCOMPLETE": 0}
+        assert result["gate"] == "NOT MET"
+
+    def test_borderline_is_not_a_pass_until_stage_two(self) -> None:
+        kernel, engine = _gate_documents()
+        cells = gate_cells()
+        everything = {c.condition: _uniform(30e6) for c in cells}
+        _set_rates(kernel, everything)
+        _set_rates(engine, {**everything, cells[3].condition: _uniform(21e6)})
+        result = gate.verdicts(kernel, engine)
+        assert result["cells"][3]["engine_level"]["stage1"] == "borderline"
+        assert result["cells"][3]["verdict"] == "INCOMPLETE"
+        assert result["gate"] == "INCONCLUSIVE"
+        assert [c.condition for c in gate.borderline_cells(engine)] == [cells[3].condition]
+
+        second, _ = _gate_documents(runs=20)
+        second.update(target=engine["target"], policy={**engine["policy"], "runs": 20})
+        second["cells"] = [r for r in second["cells"] if Cell.from_record(r).condition == cells[3].condition]
+        _set_rates(second, {cells[3].condition: [20.5e6] * 18 + [19e6] * 2})
+        passed = gate.verdicts(kernel, engine, engine_stage2=second)
+        assert passed["cells"][3]["verdict"] == "PASS" and passed["gate"] == "MET"
+        _set_rates(second, {cells[3].condition: [20.5e6] * 17 + [19e6] * 3})
+        assert gate.verdicts(kernel, engine, engine_stage2=second)["cells"][3]["verdict"] == "NOT MET"
+
+    def test_verdict_cells_identify_their_gate_cell(self) -> None:
+        kernel, engine = _gate_documents()
+        _set_rates(kernel, {c.condition: _uniform(30e6) for c in gate_cells()})
+        _set_rates(engine, {c.condition: _uniform(30e6) for c in gate_cells()})
+        result = json.loads(json.dumps(gate.verdicts(kernel, engine)))
+        assert [Cell.from_record(c) for c in result["cells"]] == list(gate_cells())
+        assert all(c["kernel_level"]["result"] == c["engine_level"]["result"] == "pass" for c in result["cells"])
+
+    def test_stage_two_may_only_measure_borderline_cells(self) -> None:
+        kernel, engine = _gate_documents()
+        _set_rates(engine, {c.condition: _uniform(30e6) for c in gate_cells()})
+        second, _ = _gate_documents(runs=20)
+        second.update(target=engine["target"], policy={**engine["policy"], "runs": 20})
+        with pytest.raises(ValueError, match="not borderline"):
+            gate.level_results(engine, second)
+
+    def test_a_failed_check_makes_the_cell_invalid_whatever_its_speed(self) -> None:
+        kernel, engine = _gate_documents()
+        everything = {c.condition: _uniform(30e6) for c in gate_cells()}
+        _set_rates(kernel, everything)
+        _set_rates(engine, everything)
+        engine["cells"][0]["checks"][2] = {"valid": False, "failures": ["publications at calls ..."]}
+        result = gate.verdicts(kernel, engine)
+        assert result["cells"][0]["verdict"] == "INVALID"
+        assert result["gate"] == "INCONCLUSIVE"
+
+    def test_runs_on_another_runtime_are_invalid(self) -> None:
+        kernel, engine = _gate_documents()
+        record = kernel["cells"][0]
+        record["runtime"] = [dict(r) for r in record["runtime"]]
+        record["runtime"][1]["gil_enabled"] = not record["runtime"][1]["gil_enabled"]
+        assert gate.level_results(kernel)[Cell.from_record(record).condition]["result"] == "invalid"
+
+    def test_levels_must_come_from_the_same_clean_commit_and_runtime(self) -> None:
+        kernel, engine = _gate_documents()
         with pytest.raises(ValueError):
-            report.gate_verdicts(engine, kernel)
+            gate.verdicts(engine, kernel)
+        engine["environment"]["untracked_files"] = [{"path": "x.py", "sha256": "0"}]
+        with pytest.raises(ValueError, match="clean working tree"):
+            gate.verdicts(kernel, engine)
 
-    def test_off_reference_results_are_labelled(self) -> None:
-        kernel, engine = self._documents({})
+    def test_classification_uses_raw_call_times_not_summaries(self) -> None:
+        kernel, engine = _gate_documents()
+        _set_rates(kernel, {c.condition: _uniform(10e6) for c in gate_cells()})
+        for record in kernel["cells"]:
+            record["summary"]["events_per_s"] = 1e12
+        assert gate.level_results(kernel)[gate_cells()[0].condition]["stage1"] == "clear_miss"
+
+    def test_off_reference_results_do_not_count(self) -> None:
+        kernel, engine = _gate_documents()
         for document in (kernel, engine):
             document["environment"]["chip"] = "Some Other CPU"
-        assert "don't count toward the gate" in report.gate_summary(kernel, engine)
+        assert gate.verdicts(kernel, engine)["gate"] == "NOT ON THE REFERENCE MACHINE"
 
     def test_table_reports_every_cell_with_its_conditions(self) -> None:
-        kernel, _ = self._documents({})
-        text = report.table(kernel)
-        assert text.startswith("Conditions: fake (kernel level)")
+        cells = tuple(c for c in gate_cells() if c.kernel == "event_count" and c.sensor_size == (346, 260))
+        text = report.table(_document("kernel", cells, Policy(runs=1, timed_calls=1, memory_calls=0)))
+        assert text.startswith("Conditions: fake (kernel level")
         assert text.count("\n| event_count 346x260") == 10
+
+
+def _measure(
+    target_name: str, cell: Cell, policy: Policy | None = None
+) -> tuple[Prepared, list[int], dict[str, Any]]:
+    """One timed run of *cell*, as the runner does it, and the target's checks."""
+    target = TARGETS[target_name]()
+    policy = policy or Policy(timed_calls=6)
+    timed = timed_calls_for(cell, target, policy)
+    batches = cell.workload().batches(policy.warmup_calls + timed)
+    prepared = target.prepare(cell, batches)
+    samples, _ = time_calls(prepared.call, batches, policy.warmup_calls, timed, prepared.counters,
+                            prepared.before_call, prepared.after_call)
+    assert prepared.finish is not None
+    return prepared, samples, dict(prepared.finish())
+
+
+V1_SMALL_CELLS = [
+    Cell(kernel, (33, 21), batch, interval, distribution, seed=3)
+    for kernel in V1_KERNELS
+    for batch, interval in ((1_000, 16.0), (2_000, 0.0))
+    for distribution in ("uniform", "clustered")
+]
+
+
+class TestV1Targets:
+    @pytest.mark.parametrize("cell", V1_SMALL_CELLS, ids=lambda c: c.label)
+    @pytest.mark.parametrize("name", ["v1-kernel", "v1-engine"])
+    def test_real_kernels_pass_their_result_checks(self, name: str, cell: Cell) -> None:
+        _, _, checks = _measure(name, cell)
+        assert checks["valid"], checks["failures"]
+
+    def test_timed_calls_give_at_least_10_publications_at_16_ms(self) -> None:
+        def count(batch: int, interval: float) -> int:
+            cell = Cell("event_count", (346, 260), batch, interval, "uniform", seed=1)
+            return engine_timed_calls(cell, Policy().timed_calls_for(batch), warmup_calls=1)
+
+        assert (count(10_000, 16.0), count(100_000, 16.0), count(1_000_000, 16.0)) == (320, 40, 10)
+        assert (count(100_000, 0.0), count(1_000_000, 0.0)) == (20, 7)
+        for batch, calls in ((10_000, 320), (100_000, 40), (1_000_000, 10)):
+            assert sum(publication_schedule(1 + calls, batch, 16.0)[1:]) == 10
+
+    def test_engine_publishes_on_the_virtual_cadence(self) -> None:
+        cell = Cell("polarity", (40, 30), 10_000, 16.0, "uniform", seed=2)
+        _, samples, checks = _measure("v1-engine", cell, Policy())
+        assert len(samples) == 320
+        assert checks["valid"], checks["failures"]
+        assert checks["publication_calls"] == list(range(0, 321, 32))
+        assert [p["sequence"] for p in checks["publications"]] == list(range(1, 12))
+
+    def test_virtual_clock_does_not_leak_to_other_engines(self) -> None:
+        import time as time_module
+
+        import frames2py._engine as engine_module
+
+        _measure("v1-engine", Cell("event_count", (40, 30), 1_000, 16.0, "uniform", seed=2))
+        assert engine_module.time is time_module
+
+    def test_a_clock_that_does_not_advance_is_caught(self) -> None:
+        cell = Cell("event_count", (40, 30), 10_000, 16.0, "uniform", seed=2)
+        target = TARGETS["v1-engine"]()
+        batches = cell.workload().batches(41)
+        prepared = target.prepare(cell, batches)
+        assert prepared.after_call is not None and prepared.finish is not None
+        for batch in batches:  # never lets the Engine see the virtual clock
+            prepared.call(batch)
+            prepared.after_call()
+        assert not prepared.finish()["valid"]
+
+    def test_worker_processes_record_their_runtime_and_checks(self) -> None:
+        cell = Cell("exp_decay", (32, 24), 1_000, 0.0, "clustered", seed=1)
+        document = run_suite("test", (cell,), TARGETS["v1-engine"](),
+                             Policy(runs=2, timed_calls=3, memory_calls=1), progress=lambda _: None)
+        (record,) = document["cells"]
+        assert [c["valid"] for c in record["checks"]] == [True, True]
+        assert all(r["gil_enabled"] == document["environment"]["gil_enabled"] for r in record["runtime"])
+        assert len(set(record["workload_sha256"])) == 1
+        assert record["summary"]["statistic"] == "sustained"
+        assert record["memory"]["calls"] == 1
+
+    @pytest.mark.parametrize("name", ["v1-kernel", "v1-engine"])
+    def test_a_call_that_did_not_accumulate_is_caught(self, name: str) -> None:
+        cell = Cell("time_surface", (40, 30), 1_000, 0.0, "uniform", seed=2)
+        batches = cell.workload().batches(4)
+        prepared = TARGETS[name]().prepare(cell, batches)
+        assert prepared.before_call and prepared.after_call and prepared.finish
+        for i, batch in enumerate(batches):
+            prepared.before_call()
+            if i != 2:
+                prepared.call(batch)
+            prepared.after_call()
+        assert not prepared.finish()["valid"]
+
+
+class _FakeMac:
+    """A macOS power backend with a chosen capability value and assertion behaviour."""
+
+    def __init__(self, capabilities: int | None, create_fails: bool = False,
+                 confirms: bool = True) -> None:
+        self.caps, self.create_fails, self.confirms = capabilities, create_fails, confirms
+        self.held: set[int] = set()
+        self.created = 0
+
+    def capabilities(self) -> int | None:
+        return self.caps
+
+    def create_assertion(self, name: str) -> int:
+        if self.create_fails:
+            raise power.PowerStateError("denied")
+        self.created += 1
+        self.held.add(self.created)
+        return self.created
+
+    def assertion_properties(self, assertion: int) -> dict[str, Any]:
+        if not self.confirms or assertion not in self.held:
+            return {}
+        return {"AssertType": power.ASSERTION_TYPE, "AssertLevel": power.ASSERTION_LEVEL_ON, "AssertName": "x"}
+
+    def release_assertion(self, assertion: int) -> None:
+        self.held.discard(assertion)
+
+
+class TestPowerGuard:
+    @pytest.mark.parametrize("caps", [0x1, 0x9, 0x0, None], ids=["cpu-only", "darkwake-net", "none", "unknown"])
+    def test_refuses_outside_full_wake_without_taking_an_assertion(self, caps: int | None) -> None:
+        backend = _FakeMac(caps)
+        with pytest.raises(power.PowerStateError, match="full wake"):
+            with power.hold_awake(backend=backend, platform="darwin"):
+                pytest.fail("the block must not run")
+        assert backend.created == 0
+
+    def test_refuses_when_the_assertion_cannot_be_taken(self) -> None:
+        with pytest.raises(power.PowerStateError):
+            with power.hold_awake(backend=_FakeMac(0x1F, create_fails=True), platform="darwin"):
+                pytest.fail("the block must not run")
+
+    def test_refuses_and_releases_when_the_assertion_cannot_be_confirmed(self) -> None:
+        backend = _FakeMac(0x1F, confirms=False)
+        with pytest.raises(power.PowerStateError, match="confirmed"):
+            with power.hold_awake(backend=backend, platform="darwin"):
+                pytest.fail("the block must not run")
+        assert backend.held == set()
+
+    def test_holds_for_the_block_and_releases_after_it_even_on_error(self) -> None:
+        backend = _FakeMac(0x1F)
+        with pytest.raises(ZeroDivisionError):
+            with power.hold_awake(backend=backend, platform="darwin") as record:
+                assert backend.held == {1}
+                1 / 0
+        assert backend.held == set()
+        assert record["assertion"]["released"] is True and record["end"]["full_wake"] is True
+
+    def test_other_platforms_never_refuse(self) -> None:
+        with power.hold_awake(platform="linux") as record:
+            pass
+        assert record["assertion"] is None and "slept" in record
+
+    def test_sleep_during_the_block_is_recorded_and_voids_gate_cells(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        kernel, _ = _gate_documents()
+        _set_rates(kernel, {c.condition: _uniform(30e6) for c in gate_cells()})
+        clocks = iter([(0, 0), (60_000_000_000, 5_000_000_000)])  # 55 s asleep
+        monkeypatch.setattr(power, "_clock_pair", lambda: next(clocks))
+        with power.hold_awake(platform="linux") as record:
+            pass
+        assert record["slept"] is True and record["slept_ns"] == 55_000_000_000
+        kernel["power"] = record
+        assert all(r["result"] == "invalid" for r in gate.level_results(kernel).values())
+        del kernel["power"]  # documents from before power records keep their classification
+        assert all(r["result"] == "pass" for r in gate.level_results(kernel).values())
+
+    def test_full_wake_at_start_and_end_keeps_the_classification(self) -> None:
+        kernel, _ = _gate_documents()
+        _set_rates(kernel, {c.condition: _uniform(30e6) for c in gate_cells()})
+        with power.hold_awake(backend=_FakeMac(0x1F), platform="darwin") as record:
+            pass
+        assert record["slept"] is False and not power.ended_outside_full_wake(record)
+        kernel["power"] = record
+        assert all(r["result"] == "pass" for r in gate.level_results(kernel).values())
+
+    def test_ending_in_darkwake_voids_gate_cells_without_any_recorded_sleep(self) -> None:
+        kernel, _ = _gate_documents()
+        _set_rates(kernel, {c.condition: _uniform(30e6) for c in gate_cells()})
+        backend = _FakeMac(0x1F)
+        with power.hold_awake(backend=backend, platform="darwin") as record:
+            backend.caps = 0x9  # DarkWake: CPU without graphics
+        assert record["slept"] is False and power.ended_outside_full_wake(record)
+        kernel["power"] = record
+        assert all(r["result"] == "invalid" for r in gate.level_results(kernel).values())
+        assert any("ended outside full wake" in reason for reason in gate.problems(kernel["cells"][0], kernel, 5))
+
+    def test_platforms_without_a_wake_state_keep_the_classification(self) -> None:
+        kernel, _ = _gate_documents()
+        _set_rates(kernel, {c.condition: _uniform(30e6) for c in gate_cells()})
+        with power.hold_awake(platform="linux") as record:
+            pass
+        kernel["power"] = record
+        assert all(r["result"] == "pass" for r in gate.level_results(kernel).values())
+
+    @pytest.mark.skipif(sys.platform != "darwin", reason="IOKit power assertions are macOS only")
+    def test_real_assertion_is_held_and_released(self) -> None:
+        backend = power.MacBackend()
+        if not power.state(backend)["full_wake"]:
+            pytest.skip("not in full wake; the guard would refuse")
+        created: list[int] = []
+        create = backend.create_assertion
+
+        def spy(name: str) -> int:
+            created.append(create(name))
+            return created[-1]
+
+        backend.create_assertion = spy  # type: ignore[method-assign]
+        with power.hold_awake("frames2py test", backend=backend) as record:
+            assert backend.assertion_properties(created[0])["AssertLevel"] == power.ASSERTION_LEVEL_ON
+        assert backend.assertion_properties(created[0]) == {}
+        assert record["slept"] is False
+
+    def test_documents_record_the_power_state(self) -> None:
+        document = _document("kernel", TestRunnerAndResults.CELLS[:1], Policy(runs=1, timed_calls=1, memory_calls=0))
+        assert set(document["power"]) >= {"platform", "start", "end", "slept_ns", "slept", "assertion"}
+        env_power = document["environment"]["power"]
+        expected = {"system_capabilities", "full_wake", "pmset"} if sys.platform == "darwin" else set()
+        assert expected <= set(env_power)
+        if sys.platform == "darwin":
+            assert document["power"]["assertion"]["released"] is True
 
 
 class TestPrototypeTargets:
@@ -443,3 +806,43 @@ def test_cli_lists_the_gate(capsys: pytest.CaptureFixture[str]) -> None:
     assert capsys.readouterr().out.rstrip().endswith("150 cells, 150 in the hard gate")
     assert main(["list", "--suite", "prototype-baseline", "--batch-size", "10000", "--interval", "0"]) == 0
     assert capsys.readouterr().out.rstrip().endswith("12 cells, 0 in the hard gate")
+
+
+class TestAdapterCharacterisation:
+    """The adapter benchmark measures what it says, on a committed fixture, in this process."""
+
+    def test_document_records_conditions_counts_and_rates(self) -> None:
+        from benchmarks import adapters
+
+        fixture = Path(__file__).resolve().parent / "data" / "sparklers_100k.evt2.raw"
+        document = adapters.run("sparklers_100k.evt2.raw", runs=2, process_per_run=False, path=fixture, adapter="evt",
+                                open_kwargs={"sensor_size": (640, 480)}, expected_events=100_000)
+        assert document["schema"] == adapters.SCHEMA and document["policy"] == {"runs": 2, "process_per_run": False}
+        assert document["backends"]["numpy"] == np.__version__
+        for run in document["runs"]:
+            assert run["events"] == 100_000 and run["checks"] == {"events_match": True}
+            assert (run["t_min"], run["t_max"]) == (913_716_224, 913_728_417)
+            assert run["file_bytes"] == fixture.stat().st_size
+            assert run["snapshots_published"]["ingest"] >= 1
+        assert "decode_peak_traced_bytes" in document["runs"][-1]
+        per_run = document["per_run"][0]
+        span_s = (913_728_417 - 913_716_224) / 1e6
+        assert per_run["recording_events_per_s"] == pytest.approx(100_000 / span_s)
+        assert per_run["real_time_factor"] == pytest.approx(span_s / (document["runs"][0]["decode_ns"] / 1e9))
+        assert "via frames2py.adapters.evt" in adapters.report(document)
+
+    def test_a_wrong_event_count_makes_the_document_invalid(self) -> None:
+        from benchmarks import adapters
+
+        fixture = Path(__file__).resolve().parent / "data" / "active_marker_head.evt3.raw"
+        document = adapters.run("active_marker_head", runs=1, process_per_run=False, path=fixture, adapter="evt",
+                                open_kwargs={}, expected_events=1)
+        assert document["valid"] is False and "INVALID" in adapters.report(document)
+
+    def test_batch_size_reaches_the_reader(self) -> None:
+        from benchmarks import adapters
+
+        fixture = Path(__file__).resolve().parent / "data" / "active_marker_head.evt3.raw"
+        document = adapters.run("active_marker_head", runs=1, process_per_run=False, path=fixture, adapter="evt",
+                                open_kwargs={}, expected_events=46_893, batch_size=10_000)
+        assert document["open_kwargs"]["batch_size"] == 10_000 and document["valid"]

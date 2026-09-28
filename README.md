@@ -52,14 +52,14 @@ uv add frames2py
 # With OpenCV viewer
 pip install "frames2py[viewer-opencv]"
 
-# With HDF5 support
-pip install "frames2py[adapter-h5]"
+# File adapters: EVT 2.0 / 3.0 (Prophesee RAW), AEDAT 4.0, HDF5
+pip install "frames2py[evt]"
+pip install "frames2py[aedat4]"
+pip install "frames2py[hdf5]"
 
 # Everything
 pip install "frames2py[all]"
 ```
-
-Prophesee (`metavision-core`) and iniVation (`dv-processing`) adapters are included but their SDKs must be installed separately from each vendor. The adapters will tell you what to install if the SDK is missing.
 
 ## Kernels
 
@@ -76,23 +76,19 @@ All kernels use vectorized NumPy. Optional C++ backends (pybind11) are available
 
 ## Adapters
 
-Read and write events in any format. No lock-in.
+Read recordings as `EVENT_DTYPE` arrays:
 
 ```python
-from frames2py.adapters.h5 import from_h5
-from frames2py.adapters.aedat4 import from_aedat4
-from frames2py.adapters.prophesee import from_prophesee
-from frames2py.adapters.inivation import from_inivation
-from frames2py.adapters.udp import from_udp
+from frames2py.adapters import evt
 
-# Convert between formats
-from frames2py.adapters.convert import convert
-convert("recording.h5", "output.aedat4")
-convert("data.aedat4", "data.csv")
-convert("events.npy", "events.h5")
+with evt.open("recording.raw") as reader:
+    engine = frames2py.Engine(reader.sensor_size, "event_count")
+    for events in reader:
+        engine.ingest(events)
 ```
 
-Supported: **HDF5**, **AEDAT4**, **NumPy**, **CSV**, **UDP**, **Prophesee RAW**, **iniVation AEDAT**.
+Supported: **EVT 2.0 / 3.0** (`frames2py.adapters.evt`), **AEDAT 4.0** (`frames2py.adapters.aedat4`),
+**HDF5** (`frames2py.adapters.hdf5`). See [docs/adapters.md](docs/adapters.md).
 
 ## Overlays
 
@@ -140,7 +136,7 @@ frames2py/
     kernels/        # Kernel protocol + NumPy/C++ implementations
     consumers/      # Viewer, Recorder, Telemetry
     display/        # Renderer backends + overlays
-    adapters/       # H5, AEDAT4, Prophesee, iniVation, UDP, converters
+    adapters/       # EVT 2.0 / 3.0, AEDAT4 and HDF5 file adapters
     bench/          # Synthetic event generator + benchmarks
   native/           # C++ pybind11 kernels
   tests/            # pytest suite (169 tests)

@@ -1,4 +1,4 @@
-"""Command line: ``uv run python -m benchmarks {list,run,report,gate}``."""
+"""Command line: ``uv run python -m benchmarks {list,run,report,stage2,gate,adapters,adapters-report}``."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from benchmarks import report, results
+from benchmarks import adapters, environment, gate, report, results
 from benchmarks.matrix import SUITES, Cell
 from benchmarks.measure import Policy
 from benchmarks.runner import run_suite, worker
@@ -69,16 +69,55 @@ def main(argv: Sequence[str] | None = None) -> int:
     report_cmd = commands.add_parser("report", help="tabulate a result document")
     report_cmd.add_argument("result", type=Path)
 
+    stage2_cmd = commands.add_parser(
+        "stage2", help="re-measure a primary document's borderline cells, same target and policy"
+    )
+    stage2_cmd.add_argument("primary", type=Path)
+    stage2_cmd.add_argument("--out", type=Path, required=True)
+
     gate_cmd = commands.add_parser("gate", help="per-cell gate verdicts from both levels")
     gate_cmd.add_argument("--kernel-level", type=Path, required=True)
     gate_cmd.add_argument("--engine-level", type=Path, required=True)
+    gate_cmd.add_argument("--kernel-stage2", type=Path)
+    gate_cmd.add_argument("--engine-stage2", type=Path)
+    gate_cmd.add_argument("--out", type=Path, help="also write the verdicts as JSON")
 
     commands.add_parser("worker", help="internal: one run, request on stdin, records on stdout")
+
+    adapters_cmd = commands.add_parser("adapters", help="characterise an adapter on a downloaded real recording")
+    adapters_cmd.add_argument("--recording", required=True, help="a name from tests.recordings")
+    adapters_cmd.add_argument("--out", type=Path, required=True)
+    adapters_cmd.add_argument("--runs", type=int, default=5)
+    adapters_cmd.add_argument("--kernel", default="event_count")
+    adapters_cmd.add_argument("--interval", type=float, default=16.0, help="snapshot interval, ms")
+    adapters_cmd.add_argument("--batch-size", type=int, default=None, help="the reader's batch_size (default: None)")
+    adapters_report_cmd = commands.add_parser("adapters-report", help="tabulate an adapter characterisation document")
+    adapters_report_cmd.add_argument("result", type=Path)
+    commands.add_parser("adapters-worker", help="internal: one adapter run, request on stdin, record on stdout")
 
     args = parser.parse_args(argv)
 
     if args.command == "worker":
         json.dump(worker(json.load(sys.stdin)), sys.stdout)
+        return 0
+
+    if args.command == "adapters-worker":
+        json.dump(adapters.worker(json.load(sys.stdin)), sys.stdout)
+        return 0
+
+    if args.command == "adapters":
+        if args.out.exists():
+            parser.error(f"{args.out} exists; refusing to overwrite a result")
+        document = adapters.run(args.recording, runs=args.runs, kernel=args.kernel, interval_ms=args.interval,
+                                batch_size=args.batch_size)
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(document, indent=1) + "\n")
+        print(adapters.report(document))
+        print(f"wrote {args.out}")
+        return 0
+
+    if args.command == "adapters-report":
+        print(adapters.report(json.loads(args.result.read_text())))
         return 0
 
     if args.command == "list":
@@ -110,7 +149,50 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(report.table(results.read(args.result)))
         return 0
 
-    print(report.gate_summary(results.read(args.kernel_level), results.read(args.engine_level)))
+    if args.command == "stage2":
+        return _stage2(parser, args)
+
+    def optional(path: Path | None) -> dict[str, object] | None:
+        return results.read(path) if path is not None else None
+
+    verdicts = gate.verdicts(
+        results.read(args.kernel_level),
+        results.read(args.engine_level),
+        optional(args.kernel_stage2),
+        optional(args.engine_stage2),
+    )
+    if args.out is not None:
+        if args.out.exists():
+            parser.error(f"{args.out} exists; refusing to overwrite a result")
+        args.out.write_text(json.dumps(verdicts, indent=1) + "\n")
+    print(gate.summary(verdicts))
+    return 0
+
+
+def _stage2(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    primary = results.read(args.primary)
+    if args.out.exists():
+        parser.error(f"{args.out} exists; refusing to overwrite a result")
+    here = environment.capture()
+    now = {key: here.get(key) for key in gate.RUNTIME_KEYS}
+    if now != gate.runtime_of(primary):
+        parser.error(f"this interpreter is {now}; the primary document ran on {gate.runtime_of(primary)}")
+    if here.get("commit") != primary["environment"].get("commit") or not environment.working_tree_clean(here):
+        parser.error("stage 2 must run from the primary document's commit, on a clean working tree")
+    cells = gate.borderline_cells(primary)
+    recorded = primary["policy"]
+    policy = Policy(
+        runs=gate.STAGE2_RUNS,
+        warmup_calls=recorded["warmup_calls"],
+        timed_calls=recorded["timed_calls"],
+        memory_calls=recorded["memory_calls"],
+    )
+    target = TARGETS[primary["target"]["name"]]()
+    print(f"{len(cells)} borderline cell(s)", file=sys.stderr)
+    document = run_suite(primary["suite"], cells, target, policy,
+                         process_per_run=recorded["process_per_run"])
+    results.write(args.out, document)
+    print(f"wrote {args.out}")
     return 0
 
 

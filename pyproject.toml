@@ -22,6 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Image Processing",
     "Topic :: Multimedia :: Video",
@@ -37,20 +38,17 @@ keywords = [
     "accumulation",
 ]
 dependencies = [
-    "numpy>=1.24",
+    "numpy>=2.4",
 ]
 
 [project.optional-dependencies]
+evt = []
+aedat4 = ["dv-processing>=2.0.4"]
+hdf5 = ["h5py>=3.16", "hdf5plugin>=7.1"]
 viewer-opencv = ["opencv-python>=4.8"]
-adapter-h5 = ["h5py>=3.9"]
 all = [
     "opencv-python>=4.8",
-    "h5py>=3.9",
 ]
-# Prophesee (metavision-core) and iniVation (dv-processing) are
-# vendor-channel packages not available on PyPI. Install them
-# directly from each vendor. The adapters detect their absence
-# at runtime and raise a clear ImportError with instructions.
 
 [dependency-groups]
 dev = [
