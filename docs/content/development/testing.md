@@ -5,7 +5,7 @@
 ```sh
 git clone https://github.com/siddiquifaras/frames2py.git
 cd frames2py
-uv sync                  # the package, NumPy and the dev tools (pytest, mypy, pyflakes)
+uv sync                  # the package, NumPy and the dev tools (pytest, Hypothesis, mypy, pyflakes)
 uv sync --all-extras     # also dv-processing, h5py, hdf5plugin and pyglet
 uv run pytest
 ```
@@ -26,7 +26,11 @@ Without the extras, the adapter, recorder and viewer tests that need a backend s
 | `tests/test_benchmarks.py`, `tests/test_consumer_benchmarks.py` | the benchmark harness itself, not performance |
 
 The tests check observable behaviour against references that don't reuse the
-implementation's own calculation. Benchmarks are kept separate from correctness tests and
+implementation's own calculation. Some are property tests (Hypothesis) over generated inputs:
+kernel results against the reference for any sequence of calls, independence from arrival
+order and call partitioning where a kernel promises it, rejected calls changing nothing, and
+adapter output independent of how the input is cut (`tests/contract/test_properties.py`,
+`tests/adapters/test_chunking_properties.py`). Benchmarks are kept separate from correctness tests and
 never run in the test suite.
 
 ## Optional test sets
@@ -46,6 +50,9 @@ never run in the test suite.
   Linux CI they run under Xvfb.
 - **Slow tests.** `FRAMES2PY_SLOW_TESTS=1` runs the modulo-2^32 wrap tests, which accumulate
   2^32 events.
+- **A wider property search.** The property tests run the same examples on every run, so a
+  failure reproduces. `uv run pytest --hypothesis-profile explore` draws up to 3,000 fresh random
+  examples per property instead; a failure prints the smallest example it found.
 
 ## Documentation tests
 

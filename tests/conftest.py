@@ -7,8 +7,16 @@ from collections.abc import Callable, Iterator
 
 import numpy as np
 import pytest
+from hypothesis import settings
 
 import frames2py
+
+# Property tests: the same examples on every run, so CI results reproduce and a red run is a
+# regression, not a lucky draw. No example database is written into the checkout.
+# `pytest --hypothesis-profile explore` searches many more random examples.
+settings.register_profile("default", derandomize=True, database=None, deadline=None, print_blob=True)
+settings.register_profile("explore", max_examples=3000, database=None, deadline=None, print_blob=True)
+settings.load_profile("default")
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

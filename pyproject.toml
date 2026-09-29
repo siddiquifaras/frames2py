@@ -49,6 +49,7 @@ viewer = ["pyglet>=2.1.16"]
 
 [dependency-groups]
 test = [
+    "hypothesis>=6.168.3",
     "pytest>=7.4",
     "pytest-timeout>=2.2",
 ]
