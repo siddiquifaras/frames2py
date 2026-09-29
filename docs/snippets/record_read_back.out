@@ -1,2 +1,3 @@
 events recorded: 100000
-identical, in order: True
+same dtype: True
+same values, in order: True

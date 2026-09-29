@@ -26,4 +26,5 @@ with tempfile.TemporaryDirectory() as directory:
 
 original = np.concatenate(written)
 print("events recorded:", len(read_back))
-print("identical, in order:", all(np.array_equal(original[f], read_back[f]) for f in "txyp"))
+print("same dtype:", read_back.dtype == original.dtype == frames2py.EVENT_DTYPE)
+print("same values, in order:", all(np.array_equal(original[f], read_back[f]) for f in "txyp"))

@@ -62,8 +62,10 @@ Per-call latency is recorded for every cell and level (p50, p95, p99 and maximum
 pooled calls of the 5 runs, in the CSV). For example, `event_count` at 1280x720, 10k events
 per call, 16 ms, uniform, Engine level: p50 / p95 / p99 of 40 / 63 / 238 µs on 3.11.14 and
 41 / 55 / 228 µs on 3.14.2t, over 1,600 calls. The 1M @ 0 ms cells have 35 calls, so their
-p99 is their maximum. The largest single calls were 53 ms (3.11.14, Engine level) and 108 ms
-(3.14.2t, kernel level).
+p99 is their maximum. The largest single calls were isolated outliers: one 53 ms call at
+3.11.14 Engine level (the next largest was 10.5 ms) and one 108 ms call at 3.14.2t kernel
+level (the next largest was 9.3 ms). Their cause is not established; read single-call
+maxima, and the p99 of the 35-call cells, as single calls.
 
 Memory, measured with `tracemalloc` in a separate untimed pass: the peak temporary
 allocation of one call was at most 23 MiB (`timestamp_decay` with 1M events); at 1280x720,

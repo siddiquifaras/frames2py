@@ -54,12 +54,14 @@ C-contiguous) raises `TypeError`; extra fields are ignored. Any event with `t >=
 rejects the whole call with `ValueError`, and nothing of that call is recorded; earlier and
 later calls are unaffected.
 
-**Reading it back** takes `hdf5.open(path, group="events", sensor_size=...)`: the reader's
-`group` has no default, and it doesn't take the geometry from the file.
+**Reading it back** takes `hdf5.open(path, group="events")`: the reader's `group` has no
+default. The reader doesn't take the geometry from the file either, so pass
+`sensor_size=...` as well if you want `reader.sensor_size` (for example to build an Engine
+from it); without it, `reader.sensor_size` is `None`.
 
 **The attributes.** `sensor_width` and `sensor_height` record the geometry you declared.
-They are informative: the HDF5 adapter doesn't read them, so pass `sensor_size` again when
-reading. They are not checked against the events either. `frames2py_format_version` is the
+They are informative: the HDF5 adapter doesn't read them. They are not checked against the
+events either. `frames2py_format_version` is the
 version of this layout, 1; the HDF5 adapter refuses a group whose version isn't exactly 1.
 
 ## Compression

@@ -13,8 +13,10 @@ hdf5plugin (`frames2py[hdf5]`: h5py >= 3.16, hdf5plugin >= 7.1). It reads the fi
 --8<-- "read_hdf5.out"
 ```
 
-`sparklers_100k.h5` holds the same 100,000 events as the EVT example, laid out as DSEC stores
-its event files (`tests/data/` in the repository).
+The example runs from a checkout's `tests/data/`, where `sparklers_100k.h5` holds the same
+100,000 events as the EVT example, laid out as DSEC stores its event files. `t_offset` is part
+of that layout; files the [recorder](recorder.md) writes store absolute timestamps and have no
+`t_offset`, so open them without it: `hdf5.open(path, group="events", sensor_size=...)`.
 
 `group` has no default when reading, because other files put their events elsewhere; the
 [recorder](recorder.md) writes to `group="events"` unless told otherwise, so its recordings

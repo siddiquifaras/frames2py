@@ -51,10 +51,15 @@ calls) and memory (`tracemalloc` in a separate untimed pass) are recorded for ev
 never change a verdict.
 
 **Conditions of the published run.** Commit `6a0fa27`, clean tree. Apple M4 (4P + 6E), 16 GB,
-macOS 15.7.7, mains power, Low Power Mode off, Docker not running, the benchmark holding its
-own idle-sleep assertion. Runtime A: CPython 3.11.14, NumPy 2.4.6. Runtime B: CPython 3.14.2
-free-threaded with the GIL disabled, NumPy 2.4.6 (pinned by hand so NumPy is the same on both
-runtimes).
+macOS 15.7.7, mains power, Low Power Mode off. Runtime A: CPython 3.11.14, NumPy 2.4.6.
+Runtime B: CPython 3.14.2 free-threaded with the GIL disabled, NumPy 2.4.6 (pinned by hand so
+NumPy is the same on both runtimes).
+
+The run predates the benchmark's sleep guard (below). The machine went to sleep for a few
+seconds near the end of the last 3.14t Engine-level run; the calls measured at that point
+were within the run-to-run variation of the same cells in the other four runs, and a slower
+state could only have lowered a result, so no verdict depends on it. Other work on the machine
+was not stopped: the run records its load, but background CPU use was not controlled.
 
 ## The data file
 
@@ -133,10 +138,12 @@ were not treated as meaningful, and the suite never compares single runs. Condit
 changed results enough to matter:
 
 - **System sleep.** The Mac used idle-sleeps after a minute and can run in a low-power
-  "dark wake" state; runs that overlapped either were slow. The runner holds its own idle-sleep assertion
-  on macOS, refuses to start outside full wake, records any sleep during the run, and the gate
-  treats cells from a run that slept as invalid.
-- **Background load.** Heavy background processes (container runtimes, editors' helper
-  processes) were stopped before measuring.
+  "dark wake" state; runs that overlapped either were slow. Since the published gate run, the
+  runner holds its own idle-sleep assertion on macOS, refuses to start outside full wake,
+  records any sleep during the run, and the gate treats cells from a run that slept as
+  invalid.
+- **Background load.** Other work on the machine competes for CPU. The published gate run
+  recorded the machine's load but did not control it, so read small differences between cells
+  as noise.
 - **Separate processes.** Repeated runs inside one process measured slower than the first, so
   each run is its own process by default.
