@@ -56,9 +56,9 @@ Runtime B: CPython 3.14.2 free-threaded with the GIL disabled, NumPy 2.4.6 (pinn
 NumPy is the same on both runtimes).
 
 The gate run predates the later sleep guard (below) and entered a low-power state near the end
-of the final 3.14t Engine-level run; the calls measured there were within the run-to-run
-variation of the other four runs, so no verdict depends on it. The recorded background
-environment was not controlled.
+of the final 3.14t Engine-level run. A low-power state can only slow a run, so no pass verdict
+depends on it; in that run's last ten cells, median call times were 0.89-1.08x those of the
+other four runs. The recorded background environment was not controlled.
 
 ## The data file
 
