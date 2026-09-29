@@ -35,10 +35,35 @@ jobs:
           version: ${{ env.UV_VERSION }}
       - run: uv lock --check
       - run: uv sync --locked --python 3.11
-      - run: uv run --no-sync pyflakes src tests benchmarks examples .github/scripts
+      - run: uv run --no-sync pyflakes src tests benchmarks examples docs .github/scripts
       - run: uv run --no-sync mypy src/frames2py
       - run: uv run --no-sync mypy benchmarks
       - run: uv run --no-sync mypy --strict .github/scripts
+
+  docs:
+    name: docs (build, strict, site check)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Install the docs dependency group alone (not the package)
+        run: uv sync --locked --only-group docs --python 3.11
+      - name: Build the site, failing on any warning
+        run: uv run --no-sync zensical build -f docs/mkdocs.yml --strict
+      - name: Check that every docstring parses without a warning
+        run: uv run --no-sync python docs/check_docstrings.py
+      - name: Serve the site under /frames2py/ and check pages, links, anchors, assets and README links
+        run: uv run --no-sync python docs/check_site.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs-site
+          path: docs/site/
+          if-no-files-found: error
 
   package:
     name: package (build twice, audit, sdist install)
