@@ -324,16 +324,17 @@ jobs:
       - name: Run the core suite (contract suite included) from the wheel in a container limited to 1 CPU and 2 GiB
         run: |
           mkdir -p junit
-          docker run --rm --cpus=1 --memory=2g --memory-swap=2g \
+          docker run --rm --cpus=1 --memory=2g --memory-swap=2g --user "$(id -u):$(id -g)" \
             -v "$PWD:/work" -v "$(dirname "$(command -v uv)"):/uvbin:ro" -w /work \
-            -e PYTHONDONTWRITEBYTECODE=1 -e UV_PYTHON_PREFERENCE=only-system -e UV_NO_CACHE=1 \
+            -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -e UV_PYTHON_PREFERENCE=only-system -e UV_NO_CACHE=1 \
             python:3.11-bookworm@sha256:b99029c95d3d37fb1e4e76d287f7984373dca77c665885986e31b2c95260c13c \
             bash -euo pipefail -c '
               uname -m; nproc; cat /sys/fs/cgroup/cpu.max /sys/fs/cgroup/memory.max
               /uvbin/uv venv --python /usr/local/bin/python3.11 /tmp/venv
               /uvbin/uv pip install --python /tmp/venv/bin/python -r test-requirements.txt "$(ls dist/*.whl)"
               /tmp/venv/bin/python -m pytest -q -p no:cacheprovider --junitxml=junit/junit.xml
-              /tmp/venv/bin/python .github/scripts/check_junit.py junit/junit.xml --installed --gil enabled'
+              /tmp/venv/bin/python .github/scripts/check_junit.py junit/junit.xml --installed --gil enabled \
+                --forbid-skip "permission bits"'
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
