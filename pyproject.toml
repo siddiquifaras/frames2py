@@ -48,9 +48,12 @@ recorder = ["h5py>=3.16", "hdf5plugin>=7.1"]
 viewer = ["pyglet>=2.1.16"]
 
 [dependency-groups]
-dev = [
+test = [
     "pytest>=7.4",
     "pytest-timeout>=2.2",
+]
+dev = [
+    { include-group = "test" },
     "mypy>=1.8",
     "pyflakes>=4.0",
 ]

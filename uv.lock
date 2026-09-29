@@ -154,6 +154,10 @@ dev = [
     { name = "pytest" },
     { name = "pytest-timeout" },
 ]
+test = [
+    { name = "pytest" },
+    { name = "pytest-timeout" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -171,6 +175,10 @@ provides-extras = ["evt", "aedat4", "hdf5", "recorder", "viewer"]
 dev = [
     { name = "mypy", specifier = ">=1.8" },
     { name = "pyflakes", specifier = ">=4.0" },
+    { name = "pytest", specifier = ">=7.4" },
+    { name = "pytest-timeout", specifier = ">=2.2" },
+]
+test = [
     { name = "pytest", specifier = ">=7.4" },
     { name = "pytest-timeout", specifier = ">=2.2" },
 ]
