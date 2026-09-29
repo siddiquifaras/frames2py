@@ -143,9 +143,9 @@ def gate_cells() -> tuple[Cell, ...]:
 
 
 def prototype_baseline_cells() -> tuple[Cell, ...]:
-    """Characterization of the prototype that is still in ``src/``.
+    """The cells of the recorded prototype baseline, for comparison with it.
 
-    Four prototype kernels, uniform events, 10k/100k/1M events at 0 and 16 ms.
+    The prototype's four kernels, uniform events, 10k/100k/1M events at 0 and 16 ms.
     This is characterization: it includes 10k @ 0 ms, which is outside the gate.
     """
     return _cells(

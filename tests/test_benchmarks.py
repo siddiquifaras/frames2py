@@ -25,6 +25,7 @@ from benchmarks import environment, gate, power, report, results
 from benchmarks.__main__ import main
 from benchmarks.matrix import (
     GATE_THRESHOLD_EVENTS_PER_S,
+    REFERENCE_MACHINE,
     V1_KERNELS,
     Cell,
     gate_cells,
@@ -35,6 +36,7 @@ from benchmarks.runner import run_suite, timed_calls_for
 from benchmarks.targets import TARGETS, Level, Prepared
 from benchmarks.targets.v1 import engine_timed_calls, publication_schedule
 from benchmarks.workloads import Workload
+from tests.fake_power import FakeMac
 
 
 class TestGateDefinition:
@@ -298,16 +300,14 @@ class TestRunnerAndResults:
             run_suite("test", self.CELLS, _FakeTarget(), Policy(runs=1, timed_calls=1))
 
     def test_one_process_per_run(self) -> None:
-        cells = (Cell("event_count", (32, 24), 1_000, 0.0, "uniform", seed=1),
-                 Cell("timestamp_decay", (32, 24), 1_000, 0.0, "uniform", seed=1))
-        document = run_suite("test", cells, TARGETS["prototype-kernel"](),
+        cells = (Cell("event_count", (32, 24), 1_000, 0.0, "uniform", seed=1),)
+        document = run_suite("test", cells, TARGETS["v1-kernel"](),
                              Policy(runs=2, timed_calls=3, memory_calls=1), progress=lambda _: None)
-        measured, unsupported = document["cells"]
+        (measured,) = document["cells"]
         assert document["policy"]["process_per_run"] is True
         assert [len(run) for run in measured["call_ns"]] == [3, 3]
         assert measured["memory"]["calls"] == 1
-        assert measured["details"]["state_dtype"] == "float32"
-        assert unsupported["status"] == "unsupported"
+        assert measured["details"]["output_dtype"] == "uint32"
 
     def test_environment_is_recorded(self) -> None:
         env = _document("kernel", self.CELLS[:1], Policy(runs=1, timed_calls=1, memory_calls=0))["environment"]
@@ -414,12 +414,12 @@ def _one_run_gate_documents() -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 def _gate_documents(runs: int = 5) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Kernel- and engine-level documents for every gate cell, from a clean tree."""
+    """Kernel- and engine-level documents for every gate cell, from a clean tree on the reference machine."""
     documents = []
     for template in _one_run_gate_documents():
         document = copy.deepcopy(template)
         document["policy"]["runs"] = runs
-        document["environment"].update(tracked_changes=False, untracked_files=[])
+        document["environment"].update(tracked_changes=False, untracked_files=[], **REFERENCE_MACHINE)
         for record in document["cells"]:
             for key in ("checks", "runtime", "workload_sha256"):
                 record[key] = record[key] * runs
@@ -641,38 +641,10 @@ class TestV1Targets:
         assert not prepared.finish()["valid"]
 
 
-class _FakeMac:
-    """A macOS power backend with a chosen capability value and assertion behaviour."""
-
-    def __init__(self, capabilities: int | None, create_fails: bool = False,
-                 confirms: bool = True) -> None:
-        self.caps, self.create_fails, self.confirms = capabilities, create_fails, confirms
-        self.held: set[int] = set()
-        self.created = 0
-
-    def capabilities(self) -> int | None:
-        return self.caps
-
-    def create_assertion(self, name: str) -> int:
-        if self.create_fails:
-            raise power.PowerStateError("denied")
-        self.created += 1
-        self.held.add(self.created)
-        return self.created
-
-    def assertion_properties(self, assertion: int) -> dict[str, Any]:
-        if not self.confirms or assertion not in self.held:
-            return {}
-        return {"AssertType": power.ASSERTION_TYPE, "AssertLevel": power.ASSERTION_LEVEL_ON, "AssertName": "x"}
-
-    def release_assertion(self, assertion: int) -> None:
-        self.held.discard(assertion)
-
-
 class TestPowerGuard:
     @pytest.mark.parametrize("caps", [0x1, 0x9, 0x0, None], ids=["cpu-only", "darkwake-net", "none", "unknown"])
     def test_refuses_outside_full_wake_without_taking_an_assertion(self, caps: int | None) -> None:
-        backend = _FakeMac(caps)
+        backend = FakeMac(caps)
         with pytest.raises(power.PowerStateError, match="full wake"):
             with power.hold_awake(backend=backend, platform="darwin"):
                 pytest.fail("the block must not run")
@@ -680,18 +652,18 @@ class TestPowerGuard:
 
     def test_refuses_when_the_assertion_cannot_be_taken(self) -> None:
         with pytest.raises(power.PowerStateError):
-            with power.hold_awake(backend=_FakeMac(0x1F, create_fails=True), platform="darwin"):
+            with power.hold_awake(backend=FakeMac(0x1F, create_fails=True), platform="darwin"):
                 pytest.fail("the block must not run")
 
     def test_refuses_and_releases_when_the_assertion_cannot_be_confirmed(self) -> None:
-        backend = _FakeMac(0x1F, confirms=False)
+        backend = FakeMac(0x1F, confirms=False)
         with pytest.raises(power.PowerStateError, match="confirmed"):
             with power.hold_awake(backend=backend, platform="darwin"):
                 pytest.fail("the block must not run")
         assert backend.held == set()
 
     def test_holds_for_the_block_and_releases_after_it_even_on_error(self) -> None:
-        backend = _FakeMac(0x1F)
+        backend = FakeMac(0x1F)
         with pytest.raises(ZeroDivisionError):
             with power.hold_awake(backend=backend, platform="darwin") as record:
                 assert backend.held == {1}
@@ -720,7 +692,7 @@ class TestPowerGuard:
     def test_full_wake_at_start_and_end_keeps_the_classification(self) -> None:
         kernel, _ = _gate_documents()
         _set_rates(kernel, {c.condition: _uniform(30e6) for c in gate_cells()})
-        with power.hold_awake(backend=_FakeMac(0x1F), platform="darwin") as record:
+        with power.hold_awake(backend=FakeMac(0x1F), platform="darwin") as record:
             pass
         assert record["slept"] is False and not power.ended_outside_full_wake(record)
         kernel["power"] = record
@@ -729,7 +701,7 @@ class TestPowerGuard:
     def test_ending_in_darkwake_voids_gate_cells_without_any_recorded_sleep(self) -> None:
         kernel, _ = _gate_documents()
         _set_rates(kernel, {c.condition: _uniform(30e6) for c in gate_cells()})
-        backend = _FakeMac(0x1F)
+        backend = FakeMac(0x1F)
         with power.hold_awake(backend=backend, platform="darwin") as record:
             backend.caps = 0x9  # DarkWake: CPU without graphics
         assert record["slept"] is False and power.ended_outside_full_wake(record)
@@ -771,34 +743,6 @@ class TestPowerGuard:
         assert expected <= set(env_power)
         if sys.platform == "darwin":
             assert document["power"]["assertion"]["released"] is True
-
-
-class TestPrototypeTargets:
-    @pytest.mark.parametrize("name", ["prototype-kernel", "prototype-engine"])
-    @pytest.mark.parametrize("kernel", ["event_count", "polarity", "time_surface", "exp_decay"])
-    def test_runs_every_prototype_kernel(self, name: str, kernel: str) -> None:
-        target = TARGETS[name]()
-        cell = Cell(kernel, (64, 48), 2_000, 0.0, "uniform", seed=1)
-        assert target.supports(cell)
-        prepared = target.prepare(cell)
-        for batch in cell.workload().batches(2):
-            prepared.call(batch)
-        assert "state_dtype" in prepared.details
-
-    @pytest.mark.parametrize("name", ["prototype-kernel", "prototype-engine"])
-    def test_timestamp_decay_is_unsupported(self, name: str) -> None:
-        cell = Cell("timestamp_decay", (64, 48), 2_000, 0.0, "uniform", seed=1)
-        assert not TARGETS[name]().supports(cell)
-
-    def test_engine_target_uses_the_cell_interval(self) -> None:
-        target = TARGETS["prototype-engine"]()
-        every_call = target.prepare(Cell("event_count", (64, 48), 100, 0.0, "uniform", seed=1))
-        batches = Workload("uniform", (64, 48), 100, seed=1).batches(5)
-        _, deltas = time_calls(every_call.call, batches, 1, 4, every_call.counters)
-        assert deltas["snapshots_published"] == 4
-        hourly = target.prepare(Cell("event_count", (64, 48), 100, 3_600_000.0, "uniform", seed=1))
-        _, deltas = time_calls(hourly.call, batches, 1, 4, hourly.counters)
-        assert deltas["snapshots_published"] == 0
 
 
 def test_cli_lists_the_gate(capsys: pytest.CaptureFixture[str]) -> None:

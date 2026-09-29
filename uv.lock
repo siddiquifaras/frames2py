@@ -150,6 +150,11 @@ viewer = [
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
+    { name = "pyflakes" },
+    { name = "pytest" },
+    { name = "pytest-timeout" },
+]
+test = [
     { name = "pytest" },
     { name = "pytest-timeout" },
 ]
@@ -169,6 +174,11 @@ provides-extras = ["evt", "aedat4", "hdf5", "recorder", "viewer"]
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.8" },
+    { name = "pyflakes", specifier = ">=4.0" },
+    { name = "pytest", specifier = ">=7.4" },
+    { name = "pytest-timeout", specifier = ">=2.2" },
+]
+test = [
     { name = "pytest", specifier = ">=7.4" },
     { name = "pytest-timeout", specifier = ">=2.2" },
 ]
@@ -620,6 +630,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
+name = "pyflakes"
+version = "4.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6e/07/587d938ce8ffea54aa23337c4a827a72c27a3a994b4346899682704af588/pyflakes-4.0.0.tar.gz", hash = "sha256:492b27735181e3d4a6acfc08738948b666bf3e696781854ea6e0d8540d566d52", size = 66927, upload-time = "2026-09-22T22:37:01.881Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3e/f3/2664f53ab17a9249c58317a00aabf76acdd18d4b1b98b3a0a36af7763950/pyflakes-4.0.0-py2.py3-none-any.whl", hash = "sha256:0f7b7a78e8fcffd78b205200f045a70911f4179be1b42eac82c3323e0bf5c8aa", size = 65907, upload-time = "2026-09-22T22:37:00.744Z" },
 ]
 
 [[package]]

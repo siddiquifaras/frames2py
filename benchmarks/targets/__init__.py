@@ -76,18 +76,6 @@ class Target(Protocol):
     def describe(self) -> dict[str, Any]: ...
 
 
-def _prototype_kernel() -> Target:
-    from benchmarks.targets.prototype import PrototypeKernelTarget
-
-    return PrototypeKernelTarget()
-
-
-def _prototype_engine() -> Target:
-    from benchmarks.targets.prototype import PrototypeEngineTarget
-
-    return PrototypeEngineTarget()
-
-
 def _v1_kernel() -> Target:
     from benchmarks.targets.v1 import V1KernelTarget
 
@@ -101,8 +89,6 @@ def _v1_engine() -> Target:
 
 
 TARGETS: Final[dict[str, Callable[[], Target]]] = {
-    "prototype-kernel": _prototype_kernel,
-    "prototype-engine": _prototype_engine,
     "v1-kernel": _v1_kernel,
     "v1-engine": _v1_engine,
 }

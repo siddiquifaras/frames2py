@@ -20,7 +20,7 @@ from benchmarks.__main__ import main
 from frames2py import EVENT_DTYPE
 from frames2py.replay import paced
 from tests.adapters.backends import require_backend
-from tests.test_benchmarks import _FakeMac
+from tests.fake_power import FakeMac
 
 
 def events(n: int, seed: int = 0) -> np.ndarray:
@@ -32,9 +32,9 @@ def events(n: int, seed: int = 0) -> np.ndarray:
 
 
 @pytest.fixture
-def mac(monkeypatch: pytest.MonkeyPatch) -> _FakeMac:
+def mac(monkeypatch: pytest.MonkeyPatch) -> FakeMac:
     """A macOS power backend in full wake, used by every ``run()`` in the test."""
-    backend = _FakeMac(0x1F)
+    backend = FakeMac(0x1F)
     monkeypatch.setattr(power, "hold_awake", functools.partial(power.hold_awake, backend=backend, platform="darwin"))
     return backend
 
@@ -51,7 +51,7 @@ def canned(checks: dict[str, bool] | None = None) -> Any:
 
 
 class TestDocumentValidity:
-    def test_every_case_runs_the_given_number_of_times_interleaved(self, mac: _FakeMac,
+    def test_every_case_runs_the_given_number_of_times_interleaved(self, mac: FakeMac,
                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
         spawn = canned()
         monkeypatch.setattr(consumers, "_spawn", spawn)
@@ -66,11 +66,11 @@ class TestDocumentValidity:
         assert {r["viewer_first"] for r in spawn.requests[cases : 2 * cases]} == {True}
         assert mac.held == set()
 
-    def test_one_failed_check_makes_the_document_invalid(self, mac: _FakeMac, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_one_failed_check_makes_the_document_invalid(self, mac: FakeMac, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(consumers, "_spawn", canned({"ok": True, "round_trip": False}))
         assert consumers.run("replay", runs=1)["valid"] is False
 
-    def test_ending_outside_full_wake_makes_the_document_invalid(self, mac: _FakeMac,
+    def test_ending_outside_full_wake_makes_the_document_invalid(self, mac: FakeMac,
                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
         def spawn(request: dict[str, Any], python: str) -> dict[str, Any]:
             mac.caps = 0x9  # DarkWake: CPU without graphics
@@ -80,7 +80,7 @@ class TestDocumentValidity:
         document = consumers.run("replay", runs=1)
         assert document["valid"] is False and power.ended_outside_full_wake(document["power"])
 
-    def test_sleep_during_the_run_makes_the_document_invalid(self, mac: _FakeMac,
+    def test_sleep_during_the_run_makes_the_document_invalid(self, mac: FakeMac,
                                                               monkeypatch: pytest.MonkeyPatch) -> None:
         clocks = iter([(0, 0), (60_000_000_000, 5_000_000_000)])  # 55 s asleep
         monkeypatch.setattr(power, "_clock_pair", lambda: next(clocks))
@@ -89,7 +89,7 @@ class TestDocumentValidity:
         assert document["valid"] is False and document["power"]["slept"] is True
 
     def test_nothing_runs_outside_full_wake(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        backend = _FakeMac(0x9)
+        backend = FakeMac(0x9)
         monkeypatch.setattr(power, "hold_awake", functools.partial(power.hold_awake, backend=backend, platform="darwin"))
         spawn = canned()
         monkeypatch.setattr(consumers, "_spawn", spawn)
@@ -97,7 +97,7 @@ class TestDocumentValidity:
             consumers.run("replay", runs=1)
         assert spawn.requests == [] and backend.created == 0
 
-    def test_a_failed_worker_process_fails_the_run_and_releases_the_guard(self, mac: _FakeMac,
+    def test_a_failed_worker_process_fails_the_run_and_releases_the_guard(self, mac: FakeMac,
                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
         def spawn(request: dict[str, Any], python: str) -> dict[str, Any]:
             raise subprocess.CalledProcessError(1, ["python", "-m", "benchmarks", "consumers-worker"])
@@ -221,7 +221,7 @@ class TestWorkers:
         assert record["duration_ns"] >= record["requested_ns"]
 
 
-def test_report_tabulates_each_kind(mac: _FakeMac, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_report_tabulates_each_kind(mac: FakeMac, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(consumers, "IMPACT_WARMUP_S", 0.02)
     monkeypatch.setattr(consumers, "IMPACT_WINDOW_S", 0.1)
     monkeypatch.setattr(consumers, "_spawn", lambda request, python: consumers.worker(request))

@@ -1,0 +1,93 @@
+name: Recordings
+
+# The opt-in real-recording tests, on a schedule and on request only; never on pull requests.
+# Recordings whose licence allows it (CC0, CC BY-SA) may be cached between runs. Recordings
+# with an unknown licence are never cached or uploaded: every run downloads them from their
+# source. Every file's size and SHA-256 are checked, and a mismatch fails the run.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recordings
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.12.20"
+  UV_PYTHON_PREFERENCE: only-managed
+  EXTRAS: aedat4,evt,hdf5,recorder,viewer
+  PYTHONDONTWRITEBYTECODE: "1"
+  FRAMES2PY_REQUIRE_EXTRAS: "1"
+
+jobs:
+  recordings:
+    name: recordings (ubuntu-24.04, 3.11)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - run: |
+          echo "PY=$RUNNER_TEMP/venv/bin/python" >> "$GITHUB_ENV"
+          echo "FRAMES2PY_RECORDINGS_DIR=$RUNNER_TEMP/recordings" >> "$GITHUB_ENV"
+          echo "CACHED=$RUNNER_TEMP/recordings-cacheable" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Build the wheel and install it with every extra into a fresh environment
+        run: |
+          uv python install 3.11
+          uv build --no-cache --wheel --out-dir dist
+          uv venv --python 3.11 "$RUNNER_TEMP/venv"
+          uv export --frozen --all-extras --no-default-groups --group test --no-emit-project --no-hashes \
+            -o "$RUNNER_TEMP/requirements.txt"
+          uv pip install --python "$PY" -r "$RUNNER_TEMP/requirements.txt" "$(ls dist/*.whl)[$EXTRAS]"
+      - name: Restore the cacheable recordings
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CACHED }}
+          key: recordings-cacheable-${{ hashFiles('tests/recordings.py') }}
+      - name: Download and verify every recording
+        run: |
+          mkdir -p "$FRAMES2PY_RECORDINGS_DIR"
+          if [ -d "$CACHED" ]; then cp "$CACHED"/* "$FRAMES2PY_RECORDINGS_DIR"/; fi
+          "$PY" - <<'EOF'
+          import os, pathlib, shutil
+          from tests import recordings
+          cached = pathlib.Path(os.environ["CACHED"])
+          cached.mkdir(exist_ok=True)
+          for name, recording in recordings.RECORDINGS.items():
+              if (recordings.directory() / name).exists():
+                  recordings.path(name)  # a restored file with the wrong SHA-256 fails the run
+              recordings.download(name)
+              recordings.path(name)  # checks the SHA-256 again
+              cacheable = recording.licence.startswith(("CC0", "CC BY-SA"))
+              print(f"{name}: verified; {'cacheable' if cacheable else 'unknown licence, not cached'}")
+              if cacheable and not (cached / name).exists():
+                  shutil.copy2(recordings.directory() / name, cached / name)
+          EOF
+          ls -l "$FRAMES2PY_RECORDINGS_DIR" "$CACHED"
+      - name: Save the cacheable recordings
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CACHED }}
+          key: recordings-cacheable-${{ hashFiles('tests/recordings.py') }}
+      - name: Run the test suite with the real recordings
+        run: |
+          mkdir -p junit
+          "$PY" -m pytest -q -p no:cacheprovider --recordings --junitxml=junit/junit.xml
+      - run: '"$PY" .github/scripts/check_junit.py junit/junit.xml --installed --gil enabled --forbid-skip "opt-in real-recording"'
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-recordings-ubuntu-24.04-py3.11
+          path: junit/
+          if-no-files-found: warn

@@ -1,0 +1,381 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.20"
+  UV_PYTHON_PREFERENCE: only-managed
+  EXTRAS: aedat4,evt,hdf5,recorder,viewer
+  PYTHONDONTWRITEBYTECODE: "1"
+  PARALLEL_STATS_TEST: tests.contract.test_concurrency::test_stats_read_in_parallel_with_ingest
+
+jobs:
+  lint:
+    name: lint (pyflakes, mypy, lockfile)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv lock --check
+      - run: uv sync --locked --python 3.11
+      - run: uv run --no-sync pyflakes src tests benchmarks examples .github/scripts
+      - run: uv run --no-sync mypy src/frames2py
+      - run: uv run --no-sync mypy benchmarks
+      - run: uv run --no-sync mypy --strict .github/scripts
+
+  package:
+    name: package (build twice, audit, sdist install)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv python install 3.11
+      - name: Build the sdist and wheel twice, and the wheel again from the sdist with pip
+        run: |
+          uv build --no-cache --out-dir dist
+          uv build --no-cache --out-dir "$RUNNER_TEMP/dist-again"
+          uv venv --seed --python 3.11 "$RUNNER_TEMP/pip-env"
+          "$RUNNER_TEMP/pip-env/bin/python" -m pip wheel --no-deps --no-cache-dir \
+            -w "$RUNNER_TEMP/dist-pip" dist/frames2py-*.tar.gz
+      - name: Compare the builds byte for byte
+        run: |
+          sha256sum dist/* "$RUNNER_TEMP"/dist-again/* "$RUNNER_TEMP"/dist-pip/* | tee "$RUNNER_TEMP/sha256.txt"
+          test "$(sha256sum dist/*.whl "$RUNNER_TEMP"/dist-again/*.whl "$RUNNER_TEMP"/dist-pip/*.whl | cut -d' ' -f1 | sort -u | wc -l)" = 1
+          test "$(sha256sum dist/*.tar.gz "$RUNNER_TEMP"/dist-again/*.tar.gz | cut -d' ' -f1 | sort -u | wc -l)" = 1
+          { echo '```'; cat "$RUNNER_TEMP/sha256.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Audit the wheel and sdist contents and metadata
+        run: uv run --no-project --python 3.11 python .github/scripts/check_dist.py dist
+      - name: Install the sdist into fresh environments with uv and with pip
+        run: |
+          smoke='import sys, frames2py, numpy as np, importlib.metadata as m
+          assert "site-packages" in frames2py.__file__, frames2py.__file__
+          e = frames2py.Engine((4, 3), frames2py.TimestampDecay(10.0))
+          ev = np.zeros(3, dtype=frames2py.EVENT_DTYPE); ev["t"] = [1, 2, 3]
+          e.ingest(ev); s = e.snapshot()
+          assert s is not None and s.meta.watermark == 3 and s.frame.dtype == np.float32
+          assert not {"h5py", "hdf5plugin", "pyglet", "dv_processing"} & set(sys.modules)
+          print(frames2py.__file__, m.version("frames2py"), "numpy", np.__version__)'
+          uv venv --python 3.11 "$RUNNER_TEMP/sdist-uv"
+          uv pip install --no-cache --python "$RUNNER_TEMP/sdist-uv/bin/python" dist/frames2py-*.tar.gz
+          "$RUNNER_TEMP/pip-env/bin/python" -m pip install --no-cache-dir dist/frames2py-*.tar.gz
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/sdist-uv/bin/python" -c "$smoke"
+          "$RUNNER_TEMP/pip-env/bin/python" -c "$smoke"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.python }})
+    needs: package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, python: "3.11", slow: "1" }
+          - { os: ubuntu-24.04, python: "3.12" }
+          - { os: ubuntu-24.04, python: "3.13" }
+          - { os: ubuntu-24.04, python: "3.14" }
+          - { os: ubuntu-24.04, python: "3.14t" }
+          - { os: ubuntu-24.04-arm, python: "3.11" }
+          - { os: ubuntu-24.04-arm, python: "3.14" }
+          - { os: ubuntu-24.04-arm, python: "3.14t" }
+          - { os: macos-15, python: "3.11" }
+          - { os: macos-15, python: "3.14" }
+          - { os: macos-15, python: "3.14t" }
+    env:
+      FRAMES2PY_REQUIRE_EXTRAS: "1"
+      FRAMES2PY_SLOW_TESTS: ${{ matrix.slow || '0' }}
+    steps:
+      - run: echo "PY=$RUNNER_TEMP/venv/bin/python" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist
+      - name: Install the built wheel with every extra into a fresh environment
+        run: |
+          uv python install "${{ matrix.python }}"
+          uv venv --python "${{ matrix.python }}" "$RUNNER_TEMP/venv"
+          uv export --frozen --all-extras --no-default-groups --group test --no-emit-project --no-hashes \
+            -o "$RUNNER_TEMP/requirements.txt"
+          uv pip install --python "$PY" -r "$RUNNER_TEMP/requirements.txt" "$(ls dist/*.whl)[$EXTRAS]"
+          uv pip freeze --python "$PY"
+          uname -m
+      - name: Check the GIL stays disabled with NumPy and every backend loaded
+        if: endsWith(matrix.python, 't')
+        run: |
+          "$PY" - <<'EOF'
+          import sys
+          import numpy, h5py, hdf5plugin, pyglet, dv_processing
+          import frames2py, frames2py.adapters.aedat4, frames2py.adapters.hdf5, frames2py.recorder, frames2py.viewer
+          print(sys.version, "GIL enabled:", sys._is_gil_enabled())
+          assert not sys._is_gil_enabled(), "the GIL is enabled"
+          EOF
+      - name: Run the test suite against the installed wheel
+        run: |
+          mkdir -p junit
+          "$PY" -m pytest -q -p no:cacheprovider --junitxml=junit/junit.xml
+      - name: Check the JUnit report
+        run: |
+          if [[ "${{ matrix.python }}" == *t ]]; then
+            "$PY" .github/scripts/check_junit.py junit/junit.xml --installed --gil disabled --ran "$PARALLEL_STATS_TEST"
+          else
+            "$PY" .github/scripts/check_junit.py junit/junit.xml --installed --gil enabled
+          fi
+          if [ "$FRAMES2PY_SLOW_TESTS" = 1 ]; then
+            "$PY" .github/scripts/check_junit.py junit/junit.xml --forbid-skip FRAMES2PY_SLOW_TESTS
+          fi
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-test-${{ matrix.os }}-py${{ matrix.python }}
+          path: junit/
+          if-no-files-found: warn
+
+  core-only:
+    name: core-only (ubuntu-24.04, 3.11, no extras)
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - run: echo "PY=$RUNNER_TEMP/venv/bin/python" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist
+      - name: Install the wheel alone and check it pulls in NumPy only
+        run: |
+          uv python install 3.11
+          uv venv --python 3.11 "$RUNNER_TEMP/venv"
+          uv pip install --python "$PY" "$(ls dist/*.whl)"
+          uv pip freeze --python "$PY" | tee "$RUNNER_TEMP/base.txt"
+          test "$(sed -E 's/[ =@].*//' "$RUNNER_TEMP/base.txt" | sort | tr '\n' ' ')" = "frames2py numpy "
+          cd "$RUNNER_TEMP" && "$PY" -c "import sys, frames2py; loaded = {'h5py', 'hdf5plugin', 'pyglet', 'dv_processing'} & set(sys.modules); assert not loaded, loaded"
+      - name: Add the test tools
+        run: |
+          uv export --frozen --only-group test --no-emit-project --no-hashes -o "$RUNNER_TEMP/test.txt"
+          uv pip install --python "$PY" -r "$RUNNER_TEMP/test.txt"
+      - name: Run the test suite without extras
+        run: |
+          mkdir -p junit
+          "$PY" -m pytest -q -p no:cacheprovider --junitxml=junit/junit.xml
+      - run: '"$PY" .github/scripts/check_junit.py junit/junit.xml --installed --gil enabled'
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-core-only-ubuntu-24.04-py3.11
+          path: junit/
+          if-no-files-found: warn
+
+  floor:
+    name: floor (${{ matrix.os }}, 3.11, NumPy 2.4.1)
+    needs: package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    env:
+      FRAMES2PY_REQUIRE_EXTRAS: "1"
+    steps:
+      - run: echo "PY=$RUNNER_TEMP/venv/bin/python" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist
+      - name: Install the wheel with its direct dependencies at their declared minimums
+        run: |
+          uv python install 3.11
+          uv venv --python 3.11 "$RUNNER_TEMP/venv"
+          uv pip compile pyproject.toml --all-extras --resolution lowest-direct --python-version 3.11 \
+            --no-header -o "$RUNNER_TEMP/floor.txt"
+          cat "$RUNNER_TEMP/floor.txt"
+          uv export --frozen --only-group test --no-emit-project --no-hashes -o "$RUNNER_TEMP/test.txt"
+          uv pip install --python "$PY" -r "$RUNNER_TEMP/floor.txt" -r "$RUNNER_TEMP/test.txt" "$(ls dist/*.whl)[$EXTRAS]"
+          uv pip freeze --python "$PY"
+      - name: Run the test suite against the installed wheel
+        run: |
+          mkdir -p junit
+          "$PY" -m pytest -q -p no:cacheprovider --junitxml=junit/junit.xml
+      - run: '"$PY" .github/scripts/check_junit.py junit/junit.xml --installed --numpy 2.4.1 --gil enabled'
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-floor-${{ matrix.os }}-py3.11-numpy2.4.1
+          path: junit/
+          if-no-files-found: warn
+
+  display:
+    name: display (ubuntu-24.04, ${{ matrix.python }}, Xvfb)
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.14t"]
+    env:
+      FRAMES2PY_REQUIRE_EXTRAS: "1"
+    steps:
+      - run: echo "PY=$RUNNER_TEMP/venv/bin/python" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist
+      - name: Install Xvfb and OpenGL
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xauth libgl1 libglu1-mesa libegl1
+      - name: Install the built wheel with every extra into a fresh environment
+        run: |
+          uv python install "${{ matrix.python }}"
+          uv venv --python "${{ matrix.python }}" "$RUNNER_TEMP/venv"
+          uv export --frozen --all-extras --no-default-groups --group test --no-emit-project --no-hashes \
+            -o "$RUNNER_TEMP/requirements.txt"
+          uv pip install --python "$PY" -r "$RUNNER_TEMP/requirements.txt" "$(ls dist/*.whl)[$EXTRAS]"
+      - name: Run the viewer and example tests with windows under Xvfb
+        run: |
+          mkdir -p junit
+          xvfb-run -a -s "-screen 0 1280x1024x24" \
+            "$PY" -m pytest -q -p no:cacheprovider --display --junitxml=junit/junit.xml tests/viewer tests/test_examples.py
+      - name: Check the window tests ran
+        run: |
+          gil=enabled; [[ "${{ matrix.python }}" == *t ]] && gil=disabled
+          "$PY" .github/scripts/check_junit.py junit/junit.xml --installed --gil "$gil" --forbid-skip "opt-in window" \
+            --ran "tests.viewer.test_window::test_the_window_shows_the_image_the_right_way_up" \
+            --ran "tests.viewer.test_window::test_run_shows_an_engine_fed_by_another_thread_and_closes_its_window" \
+            --ran "tests.test_examples::test_viewer_examples[args0]" \
+            --ran "tests.test_examples::test_viewer_examples[args1]" \
+            --ran "tests.test_examples::test_viewer_examples[args2]"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-display-ubuntu-24.04-py${{ matrix.python }}
+          path: junit/
+          if-no-files-found: warn
+
+  constrained:
+    name: constrained (ubuntu-24.04-arm, 3.11, 1 CPU, 2 GiB)
+    needs: package
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist
+      - run: uv export --frozen --only-group test --no-emit-project --no-hashes -o test-requirements.txt
+      - name: Run the core suite (contract suite included) from the wheel in a container limited to 1 CPU and 2 GiB
+        run: |
+          mkdir -p junit
+          docker run --rm --cpus=1 --memory=2g --memory-swap=2g --user "$(id -u):$(id -g)" \
+            -v "$PWD:/work" -v "$(dirname "$(command -v uv)"):/uvbin:ro" -w /work \
+            -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -e UV_PYTHON_PREFERENCE=only-system -e UV_NO_CACHE=1 \
+            python:3.11-bookworm@sha256:b99029c95d3d37fb1e4e76d287f7984373dca77c665885986e31b2c95260c13c \
+            bash -euo pipefail -c '
+              uname -m; nproc; cat /sys/fs/cgroup/cpu.max /sys/fs/cgroup/memory.max
+              /uvbin/uv venv --python /usr/local/bin/python3.11 /tmp/venv
+              /uvbin/uv pip install --python /tmp/venv/bin/python -r test-requirements.txt "$(ls dist/*.whl)"
+              /tmp/venv/bin/python -m pytest -q -p no:cacheprovider --junitxml=junit/junit.xml
+              /tmp/venv/bin/python .github/scripts/check_junit.py junit/junit.xml --installed --gil enabled \
+                --forbid-skip "permission bits"'
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-constrained-ubuntu-24.04-arm-py3.11-1cpu-2gib
+          path: junit/
+          if-no-files-found: warn
+
+  py315:
+    name: py315 (informational, CPython 3.15 pre-release, core only, no support claim)
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - run: echo "PY=$RUNNER_TEMP/venv/bin/python" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist
+      - name: Install the wheel without extras on CPython 3.15
+        run: |
+          uv python install 3.15
+          uv venv --python 3.15 "$RUNNER_TEMP/venv"
+          uv export --frozen --only-group test --no-emit-project --no-hashes -o "$RUNNER_TEMP/test.txt"
+          uv pip install --python "$PY" -r "$RUNNER_TEMP/test.txt" "$(ls dist/*.whl)"
+          "$PY" -VV
+      - name: Run the test suite without extras
+        run: |
+          mkdir -p junit
+          "$PY" -m pytest -q -p no:cacheprovider --junitxml=junit/junit.xml
+      - run: '"$PY" .github/scripts/check_junit.py junit/junit.xml --installed --gil enabled'
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-py315-informational-ubuntu-24.04
+          path: junit/
+          if-no-files-found: warn

@@ -69,7 +69,7 @@ A kernel defines the state the events accumulate into.
 | `ExpDecay(decay)` | `(H, W)` float32, decays once per `ingest()` call | running |
 | `TimestampDecay(tau_us)` | `(H, W)` float32, decays with event time | running |
 
-The kernels are NumPy. The C++ code under `native/` is prototype code; it is not built or used.
+The kernels are NumPy.
 
 ## Adapters
 
@@ -123,15 +123,11 @@ documentation; none are quoted here yet.
 frames2py/
   src/frames2py/
     _engine.py, _accumulator.py, publish.py   # the v1 core
-    core/           # prototype Engine and transport, kept for its remaining dependents
-    kernels/        # Kernel protocol and the five kernels (plus prototype kernels)
-    consumers/      # Telemetry
+    kernels/        # Kernel protocol and the five kernels
     viewer/         # render() and the pyglet viewer
     recorder/       # HDF5 event recorder
     replay.py       # paced replay
     adapters/       # EVT 2.0 / 3.0, AEDAT4 and HDF5 file adapters
-    bench/          # prototype synthetic generator and benchmarks
-  native/           # prototype C++ kernels, not built
   benchmarks/       # the benchmark suite
   tests/            # pytest suite
   docs/             # Specifications
