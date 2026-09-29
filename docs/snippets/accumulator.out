@@ -1,0 +1,7 @@
+watermark before any event: None
+[[30 10  0  0]
+ [ 0  0  0  0]
+ [ 0  0  0  0]]
+watermark: 30
+out of bounds: 1
+after reset: None 0 0

@@ -1,0 +1,7 @@
+before the first publication: None
+SnapshotMeta(watermark=3, sequence=1)
+same object for every reader: True
+writeable: False
+ValueError: assignment destination is read-only
+copy changed, snapshot not: 7 3
+copy(out=) returns out: True

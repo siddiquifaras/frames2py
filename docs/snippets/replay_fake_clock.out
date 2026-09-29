@@ -1,0 +1,4 @@
+yielded at   0.5 ms: t = [1000, 2000]
+yielded at   2.5 ms: t = [6000]
+yielded at   2.5 ms: t = [4000]
+yielded at   4.0 ms: t = [9000]

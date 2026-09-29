@@ -9,12 +9,15 @@ Fails unless:
   the ``pyproject.toml.orig`` that uv_build keeps beside its TOML 1.0 rewrite;
 - no compiled or native file, no retired prototype module and no development material is
   in either;
-- the metadata carries the project's version, licence, Python floor, dependencies and extras.
+- no documentation-site source, tooling, build output or logo asset is in either;
+- the metadata carries the project's version, licence, Python floor, dependencies and extras,
+  and no package of the ``docs`` dependency group, in the dependencies or in any extra.
 """
 
 from __future__ import annotations
 
 import ast
+import re
 import subprocess
 import sys
 import tarfile
@@ -30,6 +33,9 @@ RETIRED = ("frames2py/core/", "frames2py/bench/", "frames2py/consumers/", "frame
            "frames2py/kernels/native_kernels.py", "native/")
 NATIVE_SUFFIXES = (".so", ".pyd", ".dylib", ".dll", ".c", ".cpp", ".h", ".pyx", ".o")
 SDIST_EXTRA = {"PKG-INFO", "README.md", "LICENSE", "pyproject.toml", "pyproject.toml.orig"}
+DOCS_DIRECTORIES = {"docs", "site", "node_modules"}
+DOCS_FILES = {"mkdocs.yml", "package.json", "pnpm-lock.yaml", "frames2py-logo.svg", "frames2py-logo-dark.svg",
+              "frames2py-mark.svg", "frames2py-mark-dark.svg", "frames2py-favicon.svg", "frames2py-social.png"}
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -61,9 +67,24 @@ def check_common(errors: list[str], kind: str, names: list[str]) -> None:
         for dev in (".github/", "tests/", "benchmarks/", ".venv", ".gitignore", ".DS_Store", "dist/", "uv.lock"):
             if dev in name:
                 fail(errors, f"{kind}: development material {name}")
+        parts = PurePosixPath(name).parts
+        if DOCS_DIRECTORIES & set(parts[:-1]) or parts[-1] in DOCS_FILES:
+            fail(errors, f"{kind}: documentation-site material {name}")
 
 
-def check_metadata(errors: list[str], kind: str, text: str, version: str, requires_python: str) -> None:
+def requirement_name(requirement: str) -> str:
+    """The normalised project name of a requirement string (PEP 503)."""
+    name = re.split(r"[\s;\[<>=!~@(]", requirement.strip(), maxsplit=1)[0]
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def docs_packages() -> set[str]:
+    groups = tomllib.loads((ROOT / "pyproject.toml").read_text()).get("dependency-groups", {})
+    return {requirement_name(r) for r in groups.get("docs", []) if isinstance(r, str)}
+
+
+def check_metadata(errors: list[str], kind: str, text: str, version: str, requires_python: str,
+                   docs: set[str]) -> None:
     meta = Parser().parsestr(text)
     if meta["Version"] != version:
         fail(errors, f"{kind}: Version {meta['Version']}, expected {version}")
@@ -76,6 +97,9 @@ def check_metadata(errors: list[str], kind: str, text: str, version: str, requir
     extras = set(meta.get_all("Provides-Extra") or [])
     if extras != EXTRAS:
         fail(errors, f"{kind}: extras {sorted(extras)}, expected {sorted(EXTRAS)}")
+    for requirement in meta.get_all("Requires-Dist") or []:
+        if requirement_name(requirement) in docs:
+            fail(errors, f"{kind}: documentation tooling in Requires-Dist: {requirement}")
     unconditional = [r for r in meta.get_all("Requires-Dist") or [] if "extra ==" not in r]
     if unconditional != ["numpy>=2.4"]:
         fail(errors, f"{kind}: unconditional dependencies {unconditional}, expected ['numpy>=2.4']")
@@ -89,6 +113,9 @@ def main() -> int:
     if source_version() != version:
         fail(errors, f"__version__ {source_version()} differs from pyproject.toml {version}")
     expected = tracked_package_files()
+    docs = docs_packages()
+    if not docs:
+        fail(errors, "pyproject.toml has no docs dependency group to check against")
 
     wheels, sdists = sorted(dist.glob("*.whl")), sorted(dist.glob("*.tar.gz"))
     if [w.name for w in wheels] != [f"frames2py-{version}-py3-none-any.whl"]:
@@ -113,7 +140,8 @@ def main() -> int:
         wheel_info = Parser().parsestr(whl.read(info + "WHEEL").decode())
         if wheel_info.get_all("Tag") != ["py3-none-any"] or wheel_info["Root-Is-Purelib"] != "true":
             fail(errors, f"wheel: Tag {wheel_info.get_all('Tag')} Root-Is-Purelib {wheel_info['Root-Is-Purelib']}")
-        check_metadata(errors, "wheel", whl.read(info + "METADATA").decode(), version, project["requires-python"])
+        check_metadata(errors, "wheel", whl.read(info + "METADATA").decode(), version, project["requires-python"],
+                       docs)
         print(f"{wheels[0].name}: {len(names)} files, {len(package)} in frames2py/, "
               f"generator {wheel_info['Generator']}")
 
@@ -136,7 +164,7 @@ def main() -> int:
             fail(errors, "sdist: pyproject.toml.orig is not the project's pyproject.toml")
         pkg_info = sdist.extractfile(prefix + "PKG-INFO")
         assert pkg_info is not None
-        check_metadata(errors, "sdist", pkg_info.read().decode(), version, project["requires-python"])
+        check_metadata(errors, "sdist", pkg_info.read().decode(), version, project["requires-python"], docs)
         print(f"{sdists[0].name}: {len(members)} files, {len(package)} under src/frames2py/")
 
     for error in errors:

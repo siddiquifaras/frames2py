@@ -1,0 +1,28 @@
+/* The header bar in the Frames2Py ink colour, in both colour schemes. The primary-colour
+   variables cover MkDocs Material's header; the explicit rules cover Zensical's. */
+[data-md-color-scheme="default"],
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #1D2433;
+  --md-primary-fg-color--light: #1D2433;
+  --md-primary-fg-color--dark: #1D2433;
+  --md-primary-bg-color: #E7EBF3;
+  --md-primary-bg-color--light: #E7EBF3;
+}
+.md-header {
+  background-color: #1D2433;
+  color: #E7EBF3;
+}
+.md-header .md-search__button {
+  color: #E7EBF3;
+  background-color: rgba(231, 235, 243, 0.12);
+}
+
+/* Links in the OFF blue of the logo. */
+[data-md-color-scheme="default"] {
+  --md-accent-fg-color: #3160F0;
+  --md-typeset-a-color: #3160F0;
+}
+[data-md-color-scheme="slate"] {
+  --md-accent-fg-color: #6A8DFF;
+  --md-typeset-a-color: #6A8DFF;
+}

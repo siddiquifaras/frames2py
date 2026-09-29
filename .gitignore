@@ -33,3 +33,6 @@ Thumbs.db
 /.claude/
 CLAUDE.md
 /scratch/
+
+# Documentation site build output
+/docs/site/

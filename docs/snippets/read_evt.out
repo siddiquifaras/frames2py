@@ -1,0 +1,3 @@
+sensor: (640, 480) frame: (480, 640, 2)
+events: 100000 OFF: 68073 ON: 31927
+watermark: 913728417
