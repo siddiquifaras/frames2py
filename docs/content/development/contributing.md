@@ -47,3 +47,15 @@ On every push and pull request (`.github/workflows/ci.yml`):
 
 A weekly workflow (`recordings.yml`) runs the suite against the real recordings. The
 documentation is deployed to GitHub Pages from `main` by `pages.yml`.
+
+## Releases
+
+A release is published by `release.yml`, and only when a maintainer pushes a version tag
+(`v1.0.0`, `v1.0.0rc1`) on a commit of `main`. Before anything is built, it checks that the
+tag names exactly the version in `pyproject.toml`, that the tagged commit is on `main`, and
+that the [changelog](../changelog.md) has a section for that version. It then builds the
+wheel and sdist once, audits them, runs the test suite against them as installed, uploads
+those same files to PyPI through trusted publishing once a maintainer approves the
+deployment, and only after that creates the GitHub Release, with the changelog section as its
+notes. A version bump therefore changes `pyproject.toml`, `__version__` and `uv.lock`, and
+adds the version's changelog section; the test suite fails if the section is missing.
