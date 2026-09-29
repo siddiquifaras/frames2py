@@ -90,11 +90,6 @@ pip install "frames2py[hdf5,recorder,viewer]"   # with extras
 
 The core needs NumPy only. The extras are `evt`, `aedat4`, `hdf5`, `recorder` and `viewer`.
 
-The current release is 1.0.0rc1, a release candidate. pip and uv install a pre-release only
-when no stable release exists: until 1.0.0 is published, `pip install frames2py` installs
-1.0.0rc1, and after that 1.0.0. To ask for the release candidate explicitly:
-`pip install frames2py==1.0.0rc1`, or `pip install --pre frames2py`.
-
 What each extra pulls in, and installing the development version from Git:
 [Installation](https://siddiquifaras.github.io/frames2py/getting-started/installation/).
 

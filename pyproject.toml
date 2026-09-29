@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "frames2py"
-version = "1.0.0rc1"
+version = "1.0.0"
 description = "Decoupled observation of continuously accumulated event-camera state."
 readme = "README.md"
 license = "MIT"
@@ -14,7 +14,7 @@ authors = [
     { name = "Faras Siddiqui" },
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Operating System :: MacOS",

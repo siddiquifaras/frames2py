@@ -22,17 +22,6 @@ Python version, platform and free-threaded build are on
 
 The package is pure Python (a `py3-none-any` wheel); no compiler is needed.
 
-!!! note "The release candidate"
-    The current release is 1.0.0rc1, a release candidate for 1.0.0. pip and uv skip
-    pre-releases when a stable release exists, and install one only when none does: while
-    1.0.0rc1 is the only release, `pip install frames2py` installs it, and once 1.0.0 is
-    published it installs 1.0.0 instead. To ask for the release candidate explicitly:
-
-    ```sh
-    pip install frames2py==1.0.0rc1
-    pip install --pre frames2py   # the newest release, pre-releases included
-    ```
-
 ## Optional extras
 
 The core installs NumPy only. Everything that needs another library is an extra:
@@ -68,7 +57,7 @@ print(frames2py.__version__)
 ```
 
 ```text title="Output"
-1.0.0rc1
+1.0.0
 ```
 
 Then run the [quickstart](quickstart.md).
