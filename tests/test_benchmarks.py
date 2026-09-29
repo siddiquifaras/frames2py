@@ -35,6 +35,7 @@ from benchmarks.runner import run_suite, timed_calls_for
 from benchmarks.targets import TARGETS, Level, Prepared
 from benchmarks.targets.v1 import engine_timed_calls, publication_schedule
 from benchmarks.workloads import Workload
+from tests.fake_power import FakeMac
 
 
 class TestGateDefinition:
@@ -639,38 +640,10 @@ class TestV1Targets:
         assert not prepared.finish()["valid"]
 
 
-class _FakeMac:
-    """A macOS power backend with a chosen capability value and assertion behaviour."""
-
-    def __init__(self, capabilities: int | None, create_fails: bool = False,
-                 confirms: bool = True) -> None:
-        self.caps, self.create_fails, self.confirms = capabilities, create_fails, confirms
-        self.held: set[int] = set()
-        self.created = 0
-
-    def capabilities(self) -> int | None:
-        return self.caps
-
-    def create_assertion(self, name: str) -> int:
-        if self.create_fails:
-            raise power.PowerStateError("denied")
-        self.created += 1
-        self.held.add(self.created)
-        return self.created
-
-    def assertion_properties(self, assertion: int) -> dict[str, Any]:
-        if not self.confirms or assertion not in self.held:
-            return {}
-        return {"AssertType": power.ASSERTION_TYPE, "AssertLevel": power.ASSERTION_LEVEL_ON, "AssertName": "x"}
-
-    def release_assertion(self, assertion: int) -> None:
-        self.held.discard(assertion)
-
-
 class TestPowerGuard:
     @pytest.mark.parametrize("caps", [0x1, 0x9, 0x0, None], ids=["cpu-only", "darkwake-net", "none", "unknown"])
     def test_refuses_outside_full_wake_without_taking_an_assertion(self, caps: int | None) -> None:
-        backend = _FakeMac(caps)
+        backend = FakeMac(caps)
         with pytest.raises(power.PowerStateError, match="full wake"):
             with power.hold_awake(backend=backend, platform="darwin"):
                 pytest.fail("the block must not run")
@@ -678,18 +651,18 @@ class TestPowerGuard:
 
     def test_refuses_when_the_assertion_cannot_be_taken(self) -> None:
         with pytest.raises(power.PowerStateError):
-            with power.hold_awake(backend=_FakeMac(0x1F, create_fails=True), platform="darwin"):
+            with power.hold_awake(backend=FakeMac(0x1F, create_fails=True), platform="darwin"):
                 pytest.fail("the block must not run")
 
     def test_refuses_and_releases_when_the_assertion_cannot_be_confirmed(self) -> None:
-        backend = _FakeMac(0x1F, confirms=False)
+        backend = FakeMac(0x1F, confirms=False)
         with pytest.raises(power.PowerStateError, match="confirmed"):
             with power.hold_awake(backend=backend, platform="darwin"):
                 pytest.fail("the block must not run")
         assert backend.held == set()
 
     def test_holds_for_the_block_and_releases_after_it_even_on_error(self) -> None:
-        backend = _FakeMac(0x1F)
+        backend = FakeMac(0x1F)
         with pytest.raises(ZeroDivisionError):
             with power.hold_awake(backend=backend, platform="darwin") as record:
                 assert backend.held == {1}
@@ -718,7 +691,7 @@ class TestPowerGuard:
     def test_full_wake_at_start_and_end_keeps_the_classification(self) -> None:
         kernel, _ = _gate_documents()
         _set_rates(kernel, {c.condition: _uniform(30e6) for c in gate_cells()})
-        with power.hold_awake(backend=_FakeMac(0x1F), platform="darwin") as record:
+        with power.hold_awake(backend=FakeMac(0x1F), platform="darwin") as record:
             pass
         assert record["slept"] is False and not power.ended_outside_full_wake(record)
         kernel["power"] = record
@@ -727,7 +700,7 @@ class TestPowerGuard:
     def test_ending_in_darkwake_voids_gate_cells_without_any_recorded_sleep(self) -> None:
         kernel, _ = _gate_documents()
         _set_rates(kernel, {c.condition: _uniform(30e6) for c in gate_cells()})
-        backend = _FakeMac(0x1F)
+        backend = FakeMac(0x1F)
         with power.hold_awake(backend=backend, platform="darwin") as record:
             backend.caps = 0x9  # DarkWake: CPU without graphics
         assert record["slept"] is False and power.ended_outside_full_wake(record)
