@@ -1,0 +1,4 @@
+(480, 640) uint32
+events counted: 10000
+watermark: 9999 sequence: 1
+ingested: 10000 out of bounds: 0

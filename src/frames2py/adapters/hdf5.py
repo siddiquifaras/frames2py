@@ -84,7 +84,7 @@ def open(
             integer dataset in the file. ``None`` adds nothing.
         sensor_size: ``(width, height)``, reported as ``reader.sensor_size``.
         batch_size: Events per yielded array (the last may have fewer), or ``None`` for
-            steps of ``READ_EVENTS`` events.
+            steps of 1,048,576 events.
 
     Raises:
         ImportError: h5py or hdf5plugin is not installed (``frames2py[hdf5]``).

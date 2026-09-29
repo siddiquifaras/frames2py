@@ -57,10 +57,14 @@ dev = [
     "mypy>=1.8",
     "pyflakes>=4.0",
 ]
+docs = [
+    "zensical==0.0.66",
+    "mkdocstrings-python==2.0.9",
+]
 
 [project.urls]
 Homepage = "https://github.com/siddiquifaras/frames2py"
-Documentation = "https://github.com/siddiquifaras/frames2py/tree/main/docs"
+Documentation = "https://siddiquifaras.github.io/frames2py/"
 Repository = "https://github.com/siddiquifaras/frames2py"
 Issues = "https://github.com/siddiquifaras/frames2py/issues"
 

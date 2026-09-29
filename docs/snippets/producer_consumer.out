@@ -1,0 +1,4 @@
+consumer saw new publications: True
+sequences only increase: True
+final watermark: 1999999
+events ingested: 2000000

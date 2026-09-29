@@ -39,7 +39,8 @@ def run(
         source: Called once per interval; returns a ``Snapshot`` or ``None``.
         interval_ms: How often to read *source*, in milliseconds.
         title: The window title.
-        scale, window_us: Passed to ``render()``.
+        scale: Passed to ``render()``.
+        window_us: Passed to ``render()``.
 
     Raises:
         RuntimeError: called from a thread other than the main thread.

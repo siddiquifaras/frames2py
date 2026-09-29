@@ -1,0 +1,2 @@
+ExpDecay(0.9)            1 call:  1000.000   10 calls:   651.322
+TimestampDecay(2000.0)   1 call:   199.149   10 calls:   199.149
