@@ -53,6 +53,7 @@ dev = [
     "pytest>=7.4",
     "pytest-timeout>=2.2",
     "mypy>=1.8",
+    "pyflakes>=4.0",
 ]
 
 [project.urls]
