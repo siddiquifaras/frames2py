@@ -55,11 +55,10 @@ macOS 15.7.7, mains power, Low Power Mode off. Runtime A: CPython 3.11.14, NumPy
 Runtime B: CPython 3.14.2 free-threaded with the GIL disabled, NumPy 2.4.6 (pinned by hand so
 NumPy is the same on both runtimes).
 
-The run predates the benchmark's sleep guard (below). The machine went to sleep for a few
-seconds near the end of the last 3.14t Engine-level run; the calls measured at that point
-were within the run-to-run variation of the same cells in the other four runs, and a slower
-state could only have lowered a result, so no verdict depends on it. Other work on the machine
-was not stopped: the run records its load, but background CPU use was not controlled.
+The gate run predates the later sleep guard (below) and entered a low-power state near the end
+of the final 3.14t Engine-level run; the calls measured there were within the run-to-run
+variation of the other four runs, so no verdict depends on it. The recorded background
+environment was not controlled.
 
 ## The data file
 
@@ -137,8 +136,8 @@ On this machine, differences under about 10% between measurements of the same co
 were not treated as meaningful, and the suite never compares single runs. Conditions that
 changed results enough to matter:
 
-- **System sleep.** The Mac used idle-sleeps after a minute and can run in a low-power
-  "dark wake" state; runs that overlapped either were slow. Since the published gate run, the
+- **System sleep.** The Mac used idle-sleeps after a minute and can also run in a low-power
+  state; runs that overlapped either were slow. Since the published gate run, the
   runner holds its own idle-sleep assertion on macOS, refuses to start outside full wake,
   records any sleep during the run, and the gate treats cells from a run that slept as
   invalid.
