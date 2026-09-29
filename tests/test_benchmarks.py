@@ -25,6 +25,7 @@ from benchmarks import environment, gate, power, report, results
 from benchmarks.__main__ import main
 from benchmarks.matrix import (
     GATE_THRESHOLD_EVENTS_PER_S,
+    REFERENCE_MACHINE,
     V1_KERNELS,
     Cell,
     gate_cells,
@@ -413,12 +414,12 @@ def _one_run_gate_documents() -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 def _gate_documents(runs: int = 5) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Kernel- and engine-level documents for every gate cell, from a clean tree."""
+    """Kernel- and engine-level documents for every gate cell, from a clean tree on the reference machine."""
     documents = []
     for template in _one_run_gate_documents():
         document = copy.deepcopy(template)
         document["policy"]["runs"] = runs
-        document["environment"].update(tracked_changes=False, untracked_files=[])
+        document["environment"].update(tracked_changes=False, untracked_files=[], **REFERENCE_MACHINE)
         for record in document["cells"]:
             for key in ("checks", "runtime", "workload_sha256"):
                 record[key] = record[key] * runs
