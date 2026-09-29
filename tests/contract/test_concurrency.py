@@ -208,23 +208,61 @@ def reading_until_done(snapshot: Callable[[], Any], reads: list[Record]) -> Call
 
 class _TearingPublisher:
     """A deliberately broken publisher: one buffer rewritten in place, metadata read after
-    the frame. Used only to show that this harness detects torn snapshots."""
+    the frame. Used only to show that this harness detects torn snapshots.
+
+    Scheduling alone may never interleave a copy with a rewrite, so one tear is forced: the
+    first read of publication 1 copies half the frame, publication 2 is then written over the
+    buffer, and the read copies the other half and takes publication 2's metadata before
+    publication 3 starts. Every run therefore hands the harness the same torn snapshot, sequence
+    2 with a frame half 1 and half 2; other reads tear only if scheduling allows."""
 
     def __init__(self, shape: tuple[int, ...], dtype: Any) -> None:
         self._buffer = np.zeros(shape, dtype=dtype)
         self._meta: Any = None
+        self._writes = 0
+        self._first = threading.Event()  # publication 1 is complete
+        self._mid_copy = threading.Event()  # a read has copied half of publication 1
+        self._rewritten = threading.Event()  # publication 2 has been written over it
+        self._torn = threading.Event()  # the read has finished with publication 2's metadata
+        self._claim = threading.Lock()
+        self._claimed = False
+
+    @staticmethod
+    def _wait(event: threading.Event) -> None:
+        if not event.wait(HANG_GUARD_S):
+            raise RuntimeError("the forced tear did not happen")
 
     def begin_write(self) -> NDArray[Any]:
+        self._writes += 1
+        if self._writes == 2:
+            self._wait(self._mid_copy)
         return self._buffer
 
     def end_write(self, meta: Any) -> None:
         self._meta = meta
+        if self._writes == 1:
+            self._first.set()
+        elif self._writes == 2:
+            self._rewritten.set()
+            self._wait(self._torn)
 
     def read(self) -> Any:
         if self._meta is None:
             return None
-        frame = self._buffer.copy()
-        return publish.Snapshot(frame, self._meta)
+        with self._claim:
+            straddle = not self._claimed and self._first.is_set() and not self._mid_copy.is_set()
+            self._claimed = self._claimed or straddle
+        frame = np.empty_like(self._buffer)
+        half = len(frame) // 2
+        frame[:half] = self._buffer[:half]
+        if straddle:
+            self._mid_copy.set()
+            self._wait(self._rewritten)
+        frame[half:] = self._buffer[half:]
+        snapshot = publish.Snapshot(frame, self._meta)
+        if straddle:
+            self._torn.set()
+        return snapshot
 
 
 def _publish_stamped(publisher: Any, publications: int) -> dict[int, tuple[int | None, Summary]]:
