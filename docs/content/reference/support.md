@@ -26,7 +26,7 @@ The core needs NumPy and nothing else. It is pure Python (a `py3-none-any` wheel
   installs anywhere pip accepts it, but that is not a support claim.
 - **Other interpreters:** PyPy and other Python implementations are not supported. Neither is
   WebAssembly (Pyodide).
-- **Package index:** Frames2Py is not on PyPI yet; see
+- **Package index:** releases are published on PyPI as `frames2py`; see
   [Installation](../getting-started/installation.md).
 
 ## Free-threaded CPython

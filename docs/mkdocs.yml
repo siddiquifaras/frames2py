@@ -121,3 +121,4 @@ nav:
   - Development:
       - Testing: development/testing.md
       - Contributing: development/contributing.md
+  - Changelog: changelog.md

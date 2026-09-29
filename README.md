@@ -81,15 +81,21 @@ such as the viewer (`frames2py.viewer.run(engine.snapshot)`) read `snapshot()` e
 
 ## Installation
 
-Frames2Py is not on PyPI yet. Install it from the repository (CPython 3.11+, NumPy 2.4+):
+CPython 3.11+, NumPy 2.4+:
 
 ```sh
-pip install "frames2py @ git+https://github.com/siddiquifaras/frames2py"
-pip install "frames2py[hdf5,recorder,viewer] @ git+https://github.com/siddiquifaras/frames2py"   # with extras
+pip install frames2py
+pip install "frames2py[hdf5,recorder,viewer]"   # with extras
 ```
 
 The core needs NumPy only. The extras are `evt`, `aedat4`, `hdf5`, `recorder` and `viewer`.
-Installing from a built wheel, and what each extra pulls in:
+
+The current release is 1.0.0rc1, a release candidate. pip and uv install a pre-release only
+when no stable release exists: until 1.0.0 is published, `pip install frames2py` installs
+1.0.0rc1, and after that 1.0.0. To ask for the release candidate explicitly:
+`pip install frames2py==1.0.0rc1`, or `pip install --pre frames2py`.
+
+What each extra pulls in, and installing the development version from Git:
 [Installation](https://siddiquifaras.github.io/frames2py/getting-started/installation/).
 
 ## Adapters, recorder, viewer

@@ -45,8 +45,7 @@ extras.
 
 ## Where to start
 
-1. [Install](getting-started/installation.md) it. Frames2Py is not on PyPI yet; it installs
-   from the Git repository or a built wheel.
+1. [Install](getting-started/installation.md) it: `pip install frames2py`.
 2. Run the [quickstart](getting-started/quickstart.md): synthetic events in, a snapshot
    out, in about 20 lines.
 3. Read [Concepts](getting-started/concepts.md) for the vocabulary, then the
@@ -61,6 +60,6 @@ conversion to the tools that already do them well.
 
 ## Status
 
-Version 0.1.0, pre-release. The API described here is the one intended for 1.0; until 1.0
-it may still change. Performance figures are measurements on one machine, with their
-conditions: see [Performance](reference/performance.md).
+Version 1.0.0rc1, a release candidate for 1.0.0 (see the [changelog](changelog.md)). The
+API described here is the one intended for 1.0.0. Performance figures are measurements on
+one machine, with their conditions: see [Performance](reference/performance.md).

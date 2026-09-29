@@ -1,0 +1,302 @@
+name: Release
+
+# Publishes a release to PyPI, then creates its GitHub Release. Triggered only by pushing a tag
+# v<X.Y.Z> or v<X.Y.Z>rc<N>; branch pushes, pull requests and manual runs never start it.
+#
+#   verify   the tag names exactly pyproject.toml's version, the tagged commit is on main, the
+#            changelog has the version's section, and the pypi environment requires the
+#            repository owner's approval
+#   build    builds the wheel and sdist once, checks they rebuild byte for byte, audits them
+#            and uploads them as the dist artifact, with their SHA-256 in the summary
+#   test     installs those files (wheel on three platforms, sdist) and runs the test suite
+#   publish  uploads those same files to PyPI by trusted publishing, in the pypi environment,
+#            after the owner approves the deployment
+#   github-release  only after publish succeeded: the GitHub Release, with the changelog
+#            section as notes and the same files attached; an rc is marked pre-release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+rc[0-9]+"
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.12.20"
+  UV_PYTHON_PREFERENCE: only-managed
+  EXTRAS: aedat4,evt,hdf5,recorder,viewer
+  PYTHONDONTWRITEBYTECODE: "1"
+  PARALLEL_STATS_TEST: tests.contract.test_concurrency::test_stats_read_in_parallel_with_ingest
+
+jobs:
+  verify:
+    name: verify (tag, version, main, changelog, environment)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'siddiquifaras/frames2py'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv python install 3.11
+      - name: Check the tag names exactly the version in pyproject.toml and __version__
+        id: tag
+        run: uv run --no-project --python 3.11 python .github/scripts/release.py check-tag "$GITHUB_REF_NAME"
+      - name: Check the tagged commit is on main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$GITHUB_SHA^{commit}")"
+          uv run --no-project --python 3.11 python .github/scripts/release.py check-on-main "$GITHUB_SHA" origin/main
+      - name: Extract the release notes from the changelog
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: uv run --no-project --python 3.11 python .github/scripts/release.py notes "$VERSION" --out "$RUNNER_TEMP/release-notes.md"
+      - name: Check the pypi environment requires the repository owner's approval
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          uv run --no-project --python 3.11 python .github/scripts/release.py check-environment \
+            --repository "$GITHUB_REPOSITORY" --reviewer "$GITHUB_REPOSITORY_OWNER" --environment pypi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/release-notes.md
+          if-no-files-found: error
+
+  build:
+    name: build (wheel and sdist, once; audit)
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      wheel: ${{ steps.hashes.outputs.wheel }}
+      wheel_sha256: ${{ steps.hashes.outputs.wheel_sha256 }}
+      sdist: ${{ steps.hashes.outputs.sdist }}
+      sdist_sha256: ${{ steps.hashes.outputs.sdist_sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv python install 3.11
+      - name: Build the wheel and sdist from the tagged commit
+        run: uv build --no-cache --out-dir dist
+      - name: Check they rebuild byte for byte, and the wheel from the sdist with pip
+        run: |
+          uv build --no-cache --out-dir "$RUNNER_TEMP/dist-again"
+          uv venv --seed --python 3.11 "$RUNNER_TEMP/pip-env"
+          "$RUNNER_TEMP/pip-env/bin/python" -m pip wheel --no-deps --no-cache-dir \
+            -w "$RUNNER_TEMP/dist-pip" dist/frames2py-*.tar.gz
+          sha256sum dist/* "$RUNNER_TEMP"/dist-again/* "$RUNNER_TEMP"/dist-pip/*
+          test "$(sha256sum dist/*.whl "$RUNNER_TEMP"/dist-again/*.whl "$RUNNER_TEMP"/dist-pip/*.whl | cut -d' ' -f1 | sort -u | wc -l)" = 1
+          test "$(sha256sum dist/*.tar.gz "$RUNNER_TEMP"/dist-again/*.tar.gz | cut -d' ' -f1 | sort -u | wc -l)" = 1
+      - name: Audit the wheel and sdist contents and metadata
+        run: uv run --no-project --python 3.11 python .github/scripts/check_dist.py dist
+      - name: Record the files and their SHA-256
+        id: hashes
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          test "$(ls dist | wc -l)" = 2
+          wheel=$(cd dist && ls *.whl); sdist=$(cd dist && ls *.tar.gz)
+          test "$wheel" = "frames2py-$VERSION-py3-none-any.whl"
+          test "$sdist" = "frames2py-$VERSION.tar.gz"
+          {
+            echo "wheel=$wheel"; echo "wheel_sha256=$(sha256sum "dist/$wheel" | cut -d' ' -f1)"
+            echo "sdist=$sdist"; echo "sdist_sha256=$(sha256sum "dist/$sdist" | cut -d' ' -f1)"
+          } | tee -a "$GITHUB_OUTPUT"
+          {
+            echo "### Release artifacts for $VERSION"
+            echo '```'; (cd dist && sha256sum "$wheel" "$sdist"); echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  test:
+    name: test (${{ matrix.install }}, ${{ matrix.os }}, ${{ matrix.python }})
+    needs: [verify, build]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { install: wheel, os: ubuntu-24.04, python: "3.11" }
+          - { install: wheel, os: ubuntu-24.04, python: "3.14t" }
+          - { install: wheel, os: ubuntu-24.04-arm, python: "3.11" }
+          - { install: wheel, os: ubuntu-24.04-arm, python: "3.14t" }
+          - { install: wheel, os: macos-15, python: "3.11" }
+          - { install: wheel, os: macos-15, python: "3.14t" }
+          - { install: sdist, os: ubuntu-24.04, python: "3.11" }
+    env:
+      FRAMES2PY_REQUIRE_EXTRAS: "1"
+      VERSION: ${{ needs.verify.outputs.version }}
+      WHEEL: ${{ needs.build.outputs.wheel }}
+      WHEEL_SHA256: ${{ needs.build.outputs.wheel_sha256 }}
+      SDIST: ${{ needs.build.outputs.sdist }}
+      SDIST_SHA256: ${{ needs.build.outputs.sdist_sha256 }}
+    steps:
+      - run: echo "PY=$RUNNER_TEMP/venv/bin/python" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist
+      - name: Check the downloaded files are the ones built
+        run: |
+          echo "$WHEEL_SHA256  dist/$WHEEL" > "$RUNNER_TEMP/sha256.txt"
+          echo "$SDIST_SHA256  dist/$SDIST" >> "$RUNNER_TEMP/sha256.txt"
+          shasum -a 256 -c "$RUNNER_TEMP/sha256.txt"
+      - name: Install the ${{ matrix.install }} with every extra into a fresh environment
+        run: |
+          uv python install "${{ matrix.python }}"
+          uv venv --seed --python "${{ matrix.python }}" "$RUNNER_TEMP/venv"
+          uv export --frozen --all-extras --no-default-groups --group test --no-emit-project --no-hashes \
+            -o "$RUNNER_TEMP/requirements.txt"
+          if [ "${{ matrix.install }}" = sdist ]; then
+            "$PY" -m pip install --no-cache-dir -r "$RUNNER_TEMP/requirements.txt" "./dist/${SDIST}[${EXTRAS}]"
+          else
+            uv pip install --python "$PY" -r "$RUNNER_TEMP/requirements.txt" "./dist/${WHEEL}[${EXTRAS}]"
+          fi
+          "$PY" -m pip freeze
+          "$PY" -c 'import importlib.metadata as m, sys; v = m.version("frames2py"); print(v); sys.exit(v != sys.argv[1])' "$VERSION"
+      - name: Check the GIL stays disabled with NumPy and every backend loaded
+        if: endsWith(matrix.python, 't')
+        run: |
+          "$PY" - <<'EOF'
+          import sys
+          import numpy, h5py, hdf5plugin, pyglet, dv_processing
+          import frames2py, frames2py.adapters.aedat4, frames2py.adapters.hdf5, frames2py.recorder, frames2py.viewer
+          print(sys.version, "GIL enabled:", sys._is_gil_enabled())
+          assert not sys._is_gil_enabled(), "the GIL is enabled"
+          EOF
+      - name: Run the test suite against the installed ${{ matrix.install }}
+        run: |
+          mkdir -p junit
+          "$PY" -m pytest -q -p no:cacheprovider --junitxml=junit/junit.xml
+      - name: Check the JUnit report
+        run: |
+          if [[ "${{ matrix.python }}" == *t ]]; then
+            "$PY" .github/scripts/check_junit.py junit/junit.xml --installed --gil disabled --ran "$PARALLEL_STATS_TEST"
+          else
+            "$PY" .github/scripts/check_junit.py junit/junit.xml --installed --gil enabled
+          fi
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-release-${{ matrix.install }}-${{ matrix.os }}-py${{ matrix.python }}
+          path: junit/
+          if-no-files-found: warn
+
+  publish:
+    name: publish to PyPI
+    needs: [verify, build, test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/project/frames2py/${{ needs.verify.outputs.version }}/
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      WHEEL: ${{ needs.build.outputs.wheel }}
+      WHEEL_SHA256: ${{ needs.build.outputs.wheel_sha256 }}
+      SDIST: ${{ needs.build.outputs.sdist }}
+      SDIST_SHA256: ${{ needs.build.outputs.sdist_sha256 }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist
+      - name: Check these are exactly the built and tested files
+        run: |
+          test "$(ls dist | wc -l)" = 2
+          echo "$WHEEL_SHA256  dist/$WHEEL" > "$RUNNER_TEMP/sha256.txt"
+          echo "$SDIST_SHA256  dist/$SDIST" >> "$RUNNER_TEMP/sha256.txt"
+          sha256sum -c "$RUNNER_TEMP/sha256.txt"
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist/
+      - name: Record the upload
+        run: |
+          {
+            echo "### Published $VERSION to PyPI"
+            echo "https://pypi.org/project/frames2py/$VERSION/"
+            echo '```'; cat "$RUNNER_TEMP/sha256.txt"; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  github-release:
+    name: GitHub Release (after PyPI)
+    needs: [verify, build, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      WHEEL: ${{ needs.build.outputs.wheel }}
+      WHEEL_SHA256: ${{ needs.build.outputs.wheel_sha256 }}
+      SDIST: ${{ needs.build.outputs.sdist }}
+      SDIST_SHA256: ${{ needs.build.outputs.sdist_sha256 }}
+      PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-notes
+          path: notes
+      - name: Check these are exactly the published files
+        run: |
+          echo "$WHEEL_SHA256  dist/$WHEEL" > "$RUNNER_TEMP/sha256.txt"
+          echo "$SDIST_SHA256  dist/$SDIST" >> "$RUNNER_TEMP/sha256.txt"
+          sha256sum -c "$RUNNER_TEMP/sha256.txt"
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flag=--latest; [ "$PRERELEASE" = true ] && flag=--prerelease
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag "$flag" \
+            --title "Frames2Py $VERSION" --notes-file notes/release-notes.md \
+            "dist/$WHEEL" "dist/$SDIST"
+          echo "### GitHub Release $GITHUB_REF_NAME created (pre-release: $PRERELEASE)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Say what did and didn't happen
+        if: failure()
+        run: |
+          {
+            echo "### PyPI publication of $VERSION succeeded; only the GitHub Release failed"
+            echo "The publish job uploaded the files to PyPI. Fix the cause, then use Re-run failed jobs,"
+            echo "which repeats this job only. Do not re-tag or re-run all jobs: PyPI rejects a second upload."
+          } >> "$GITHUB_STEP_SUMMARY"

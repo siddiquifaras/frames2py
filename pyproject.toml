@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "frames2py"
-version = "0.1.0"
+version = "1.0.0rc1"
 description = "Decoupled observation of continuously accumulated event-camera state."
 readme = "README.md"
 license = "MIT"
@@ -49,6 +49,7 @@ viewer = ["pyglet>=2.1.16"]
 
 [dependency-groups]
 test = [
+    "hypothesis>=6.168.3",
     "pytest>=7.4",
     "pytest-timeout>=2.2",
 ]
