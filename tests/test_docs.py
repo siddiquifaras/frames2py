@@ -263,11 +263,40 @@ def test_no_other_page_carries_api_directives() -> None:
 # ---------------------------------------------------------------- claims
 
 
-def test_no_page_offers_an_install_command_that_does_not_work_yet() -> None:
-    bare = re.compile(r"""(pip install|uv add|uv pip install)\s+["']?frames2py(\[[\w,]+\])?["']?(?=\s|$)(?!\s+@)""")
+INSTALL_PAGES = [ROOT / "README.md", CONTENT / "getting-started" / "installation.md"]
+
+
+def shell_lines(page: Path) -> list[str]:
+    return [line.split("#")[0].strip() for b in blocks(page) if b.language == "sh" for line in b.body.splitlines()]
+
+
+@pytest.mark.parametrize("page", INSTALL_PAGES, ids=lambda p: str(p.relative_to(ROOT)))
+def test_installation_is_from_pypi_with_extras_in_brackets(page: Path) -> None:
+    commands = shell_lines(page)
+    assert "pip install frames2py" in commands, f"{page.relative_to(ROOT)}: no plain pip install from PyPI"
+    extras = [c for c in commands if re.fullmatch(r'pip install "frames2py\[[a-z0-9]+(,[a-z0-9]+)*\]"', c)]
+    assert extras, f"{page.relative_to(ROOT)}: no PyPI install with extras"
+
+
+@pytest.mark.parametrize("page", INSTALL_PAGES, ids=lambda p: str(p.relative_to(ROOT)))
+def test_a_release_candidate_is_installed_explicitly(page: Path) -> None:
+    version = frames2py.__version__
+    text = page.read_text()
+    if "rc" not in version:
+        assert "--pre" not in text, f"{page.relative_to(ROOT)}: pre-release instructions for final release {version}"
+        return
+    assert f"pip install frames2py=={version}" in text
+    assert "pip install --pre frames2py" in text
+
+
+def test_git_installs_are_only_offered_as_the_development_version() -> None:
     for page in PAGES:
         for number, line in enumerate(page.read_text().splitlines(), 1):
-            assert not bare.search(line), f"{page.relative_to(ROOT)}:{number}: frames2py is not on PyPI yet"
+            if "git+https://" in line:
+                assert page == CONTENT / "getting-started" / "installation.md", f"{page.relative_to(ROOT)}:{number}"
+    installation = (CONTENT / "getting-started" / "installation.md").read_text()
+    development = installation.split("## Development version and source", 1)
+    assert len(development) == 2 and "git+https://" not in development[0]
 
 
 def test_the_readme_links_to_the_documentation_near_its_start_and_its_end() -> None:

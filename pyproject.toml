@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "frames2py"
-version = "0.1.0"
+version = "1.0.0rc1"
 description = "Decoupled observation of continuously accumulated event-camera state."
 readme = "README.md"
 license = "MIT"
