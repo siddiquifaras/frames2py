@@ -19,7 +19,8 @@ sample, recorded with a 640x480 Gen3.0 sensor and committed to the repository as
 `sensor_size`. When a header lacks geometry, take the sensor's resolution from the camera's
 specification (for example 640x480 for Prophesee Gen3.0 sensors, 1280x720 for the Sony
 IMX636); Frames2Py never guesses it. The [Adapters](adapters.md#reading-a-file) page explains
-why the example counts with an Accumulator.
+why the example counts with an Accumulator; [Seeing every
+publication](../core/engine.md#seeing-every-publication) has the same count through an Engine.
 
 ## The header
 
@@ -31,7 +32,8 @@ line that doesn't start with `%`.
   line that disagree, or any header keyword given two different values raise `ValueError`
   from `open()`.
 - **Geometry** comes from `% geometry WxH` or the format line's `width=` and `height=`. A
-  header without geometry (like the example's) needs `sensor_size`; one you pass must match.
+  header without geometry (like the example's) needs `sensor_size`, and nothing can check
+  it; when the header has geometry, a `sensor_size` you pass must match it.
 
 Only CD events are decoded. Triggers and monitoring words are skipped.
 

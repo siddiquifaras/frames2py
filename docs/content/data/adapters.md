@@ -34,7 +34,9 @@ installed raises `ImportError` naming the extra ([Installation](../getting-start
 The example uses an `Accumulator` because it wants totals over the whole file. Fed to an
 `Engine` instead, a windowed kernel such as `polarity` starts a new window at every
 publication, so the last snapshot holds only the events since the previous one: to count a
-whole file through an Engine, add up every published window, or use a running kernel.
+whole file through an Engine, add up every published window (a runnable example is under
+[Seeing every publication](../core/engine.md#seeing-every-publication) on the Engine page), or use a running
+kernel.
 
 Every adapter module has one function, `open(path, *, ...)`, which returns a **reader**:
 
@@ -46,8 +48,10 @@ Every adapter module has one function, `open(path, *, ...)`, which returns a **r
   order. Every array is new memory (or a view of new memory no other array shares): writing
   to one changes nothing else, and never the file.
 - **`reader.sensor_size`** is `(width, height)`: from the file, or the `sensor_size` you
-  passed. Missing geometry is never guessed; a `sensor_size` you pass must match the file's.
-  HDF5 files have no geometry field, so there it is whatever you passed, or `None`.
+  passed. Missing geometry is never guessed. When the file has geometry, a `sensor_size`
+  you pass must match it (`ValueError` otherwise); when it has none, the value you pass is
+  used unchecked, so make sure it is the sensor's. HDF5 files have no geometry field, so
+  there it is whatever you passed, or `None`.
 
 ## Batching
 

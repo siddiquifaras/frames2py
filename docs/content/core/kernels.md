@@ -13,7 +13,10 @@ business and may differ.
 | [`TimestampDecay`](#timestampdecay) | `TimestampDecay(tau_us)` | `(H, W)` float32 | running | adds a weight that decays with event time |
 
 `H, W` are the sensor's height and width. The classes are importable from `frames2py` and
-from `frames2py.kernels`; the three names work wherever a kernel is accepted.
+from `frames2py.kernels`; the three names work wherever a kernel is accepted. Pass an
+instance, `frames2py.Polarity()`, not the class `frames2py.Polarity`: a class is not checked
+as such, and constructing the Engine or Accumulator with it raises an unrelated-looking
+`TypeError` (`output_spec() missing 1 required positional argument`).
 
 **Windowed** kernels start a new window at each Engine publication: a snapshot shows only
 the events since the previous one. **Running** kernels are not changed by publication: a

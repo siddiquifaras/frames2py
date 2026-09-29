@@ -1,4 +1,5 @@
-# Needs frames2py[recorder] (and frames2py[hdf5] to read back; both install h5py and hdf5plugin).
+# Needs frames2py[recorder]. Reading back with frames2py.adapters.hdf5 needs the same two libraries
+# (h5py and hdf5plugin), so frames2py[recorder] alone is enough for this example.
 import tempfile
 from pathlib import Path
 

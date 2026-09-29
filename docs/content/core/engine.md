@@ -60,6 +60,27 @@ publication and after `reset()` until the next. It returns the published object 
 a copy: every consumer that reads the same publication gets the same object, with a
 read-only frame. Takes no lock. Safe from any thread.
 
+The Engine has no `watermark` attribute of its own: the watermark at each publication is
+`snapshot.meta.watermark`.
+
+## Seeing every publication
+
+Publication happens only inside `ingest()` and `stop()`,
+which run on the threads that call them. So code that reads `snapshot()` right after each
+of its own `ingest()` calls, and once after `stop()`, sees every publication, provided no
+other thread calls `reset()` meanwhile. A consumer on another thread that polls at its own
+pace may skip publications; that is by design. Summing the windows of a windowed kernel
+this way gives totals over the whole stream (an [Accumulator](accumulator.md) gives them
+without publication):
+
+```python title="engine_windows.py"
+--8<-- "engine_windows.py"
+```
+
+```text title="Output"
+--8<-- "engine_windows.out"
+```
+
 ## `stats`
 
 An `EngineStats`, a frozen dataclass, built when you read the property. Takes no lock.

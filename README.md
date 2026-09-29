@@ -37,9 +37,10 @@ independent consumers        engine.snapshot(): any thread, any number
   consumer or on I/O.
 - **`Accumulator`**: the same accumulation without publication or threads, for offline
   processing, tests and loops you drive yourself.
-- **Kernels**: `event_count` and `polarity` (windowed counts), `time_surface` (latest
-  timestamp per pixel), `ExpDecay(decay)` (decays once per call) and `TimestampDecay(tau_us)`
-  (decays with event time, independent of how events are batched).
+- **Kernels**: `event_count` and `polarity` (windowed counts: each snapshot holds only the
+  events since the previous publication), `time_surface` (latest timestamp per pixel),
+  `ExpDecay(decay)` (decays once per call) and `TimestampDecay(tau_us)` (decays with event
+  time, independent of how events are batched).
 - **Snapshots**: a frame and its metadata (watermark, sequence) from one publication. The
   frame is shared by every consumer and read-only; `snapshot.copy()` gives you your own.
 
@@ -101,7 +102,7 @@ Installing from a built wheel, and what each extra pulls in:
   import frames2py
   from frames2py.adapters import evt
 
-  with evt.open("recording.raw") as reader:
+  with evt.open("recording.raw") as reader:   # pass sensor_size=(w, h) if the header has no geometry
       engine = frames2py.Engine(reader.sensor_size, "event_count")
       for events in reader:
           engine.ingest(events)
