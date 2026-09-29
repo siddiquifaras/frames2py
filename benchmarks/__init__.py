@@ -3,7 +3,7 @@
 Development tooling, not part of the installed package. Run from the repo root:
 
     uv run python -m benchmarks list --suite gate
-    uv run python -m benchmarks run --suite gate --target prototype-engine --out results.json
+    uv run python -m benchmarks run --suite gate --target v1-engine --out results.json
     uv run python -m benchmarks report results.json
     uv run python -m benchmarks gate --kernel-level k.json --engine-level e.json
 

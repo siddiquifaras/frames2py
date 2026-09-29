@@ -26,11 +26,6 @@ env/
 .coverage
 htmlcov/
 
-# C++ build
-native/build/
-*.o
-*.d
-
 # OS
 .DS_Store
 Thumbs.db

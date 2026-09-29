@@ -298,16 +298,14 @@ class TestRunnerAndResults:
             run_suite("test", self.CELLS, _FakeTarget(), Policy(runs=1, timed_calls=1))
 
     def test_one_process_per_run(self) -> None:
-        cells = (Cell("event_count", (32, 24), 1_000, 0.0, "uniform", seed=1),
-                 Cell("timestamp_decay", (32, 24), 1_000, 0.0, "uniform", seed=1))
-        document = run_suite("test", cells, TARGETS["prototype-kernel"](),
+        cells = (Cell("event_count", (32, 24), 1_000, 0.0, "uniform", seed=1),)
+        document = run_suite("test", cells, TARGETS["v1-kernel"](),
                              Policy(runs=2, timed_calls=3, memory_calls=1), progress=lambda _: None)
-        measured, unsupported = document["cells"]
+        (measured,) = document["cells"]
         assert document["policy"]["process_per_run"] is True
         assert [len(run) for run in measured["call_ns"]] == [3, 3]
         assert measured["memory"]["calls"] == 1
-        assert measured["details"]["state_dtype"] == "float32"
-        assert unsupported["status"] == "unsupported"
+        assert measured["details"]["output_dtype"] == "uint32"
 
     def test_environment_is_recorded(self) -> None:
         env = _document("kernel", self.CELLS[:1], Policy(runs=1, timed_calls=1, memory_calls=0))["environment"]
@@ -771,34 +769,6 @@ class TestPowerGuard:
         assert expected <= set(env_power)
         if sys.platform == "darwin":
             assert document["power"]["assertion"]["released"] is True
-
-
-class TestPrototypeTargets:
-    @pytest.mark.parametrize("name", ["prototype-kernel", "prototype-engine"])
-    @pytest.mark.parametrize("kernel", ["event_count", "polarity", "time_surface", "exp_decay"])
-    def test_runs_every_prototype_kernel(self, name: str, kernel: str) -> None:
-        target = TARGETS[name]()
-        cell = Cell(kernel, (64, 48), 2_000, 0.0, "uniform", seed=1)
-        assert target.supports(cell)
-        prepared = target.prepare(cell)
-        for batch in cell.workload().batches(2):
-            prepared.call(batch)
-        assert "state_dtype" in prepared.details
-
-    @pytest.mark.parametrize("name", ["prototype-kernel", "prototype-engine"])
-    def test_timestamp_decay_is_unsupported(self, name: str) -> None:
-        cell = Cell("timestamp_decay", (64, 48), 2_000, 0.0, "uniform", seed=1)
-        assert not TARGETS[name]().supports(cell)
-
-    def test_engine_target_uses_the_cell_interval(self) -> None:
-        target = TARGETS["prototype-engine"]()
-        every_call = target.prepare(Cell("event_count", (64, 48), 100, 0.0, "uniform", seed=1))
-        batches = Workload("uniform", (64, 48), 100, seed=1).batches(5)
-        _, deltas = time_calls(every_call.call, batches, 1, 4, every_call.counters)
-        assert deltas["snapshots_published"] == 4
-        hourly = target.prepare(Cell("event_count", (64, 48), 100, 3_600_000.0, "uniform", seed=1))
-        _, deltas = time_calls(hourly.call, batches, 1, 4, hourly.counters)
-        assert deltas["snapshots_published"] == 0
 
 
 def test_cli_lists_the_gate(capsys: pytest.CaptureFixture[str]) -> None:
