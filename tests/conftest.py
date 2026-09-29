@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import sys
+from collections.abc import Callable, Iterator
+
+import numpy as np
 import pytest
+
+import frames2py
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -34,3 +40,18 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         for item in items:
             if marker in item.keywords:
                 item.add_marker(skip)
+
+
+def _gil_enabled() -> bool:
+    return bool(getattr(sys, "_is_gil_enabled", lambda: True)())
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _runtime_properties(record_testsuite_property: Callable[[str, object], None]) -> Iterator[None]:
+    """Record the runtime that ran the suite in the JUnit XML, so CI can check it."""
+    record_testsuite_property("python", sys.version.split()[0])
+    record_testsuite_property("numpy", np.__version__)
+    record_testsuite_property("frames2py_file", frames2py.__file__)
+    record_testsuite_property("gil_enabled_at_start", _gil_enabled())
+    yield
+    record_testsuite_property("gil_enabled_at_end", _gil_enabled())
