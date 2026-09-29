@@ -477,7 +477,7 @@ class _AcquireRecorder:
                     "serialised and covered by test_interleavings.py")
 @pytest.mark.timeout(HANG_GUARD_S)
 def test_stats_read_in_parallel_with_ingest() -> None:
-    batch_size, ingests = 1_000, 400
+    batch_size, least, cap = 1_000, 400, 20_000
     rng = np.random.default_rng(7)
     batch = np.empty(batch_size, dtype=EVENT_DTYPE)
     batch["t"] = np.arange(batch_size)
@@ -499,16 +499,22 @@ def test_stats_read_in_parallel_with_ingest() -> None:
 
         return read
 
+    ingested = [0]
+
     def produce() -> None:
-        for _ in range(ingests):
+        # At least `least` ingests, then more until every reader has read twice during
+        # ingestion; the cap only turns a reader that never gets to run into a failure.
+        while ingested[0] < least or (ingested[0] < cap and not all(len(s) > 2 for s in seen)):
             engine.ingest(batch)
+            ingested[0] += 1
 
     run_concurrently(produce, [reader(s) for s in seen])
+    ingests = ingested[0]
     reader_threads = {s[0] for s in seen}
     assert not reader_threads & recorder.threads, "a stats reader took the lifecycle lock"
     for slot in seen:
         stats = slot[1:]
-        assert len(stats) > 1
+        assert len(stats) > 2, f"a reader read {len(stats) - 1} times during {ingests} ingests"
         for field in ("events_ingested", "events_out_of_bounds", "snapshots_published", "uptime_ns"):
             values = [getattr(s, field) for s in stats]
             assert all(isinstance(v, int) and v >= 0 for v in values), field
