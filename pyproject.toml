@@ -61,6 +61,10 @@ Documentation = "https://github.com/siddiquifaras/frames2py/tree/main/docs"
 Repository = "https://github.com/siddiquifaras/frames2py"
 Issues = "https://github.com/siddiquifaras/frames2py/issues"
 
+[tool.uv.build-backend]
+# uv_build does not read .gitignore; keep Finder metadata out of the wheel and sdist.
+source-exclude = [".DS_Store"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
