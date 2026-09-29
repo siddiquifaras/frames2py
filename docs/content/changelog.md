@@ -9,6 +9,21 @@ else on the line (for example "## 1.0.0"). Write links as absolute URLs, because
 is also the GitHub Release text. The tests fail when pyproject.toml's version has no section.
 -->
 
+## 1.0.0
+
+The first stable release. The code is that of 1.0.0rc1, which was installed from PyPI and
+checked before this release. What changed: the version, the `Development Status` classifier
+(now `5 - Production/Stable`), and the documentation, which drops its release-candidate
+install notes. From 1.0.0 on, the public API is stable: changing it incompatibly needs a 2.0.
+
+```sh
+pip install frames2py
+```
+
+What the release contains, from the core and its five kernels to the adapters, recorder,
+replay and viewer, is listed under
+[1.0.0rc1](https://siddiquifaras.github.io/frames2py/changelog/#100rc1).
+
 ## 1.0.0rc1
 
 The first release of Frames2Py, published to PyPI as a release candidate for 1.0.0. Its API

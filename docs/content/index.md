@@ -60,6 +60,6 @@ conversion to the tools that already do them well.
 
 ## Status
 
-Version 1.0.0rc1, a release candidate for 1.0.0 (see the [changelog](changelog.md)). The
-API described here is the one intended for 1.0.0. Performance figures are measurements on
-one machine, with their conditions: see [Performance](reference/performance.md).
+Version 1.0.0 (see the [changelog](changelog.md)). The public API described here is stable:
+changing it incompatibly needs a 2.0. Performance figures are measurements on one machine,
+with their conditions: see [Performance](reference/performance.md).
