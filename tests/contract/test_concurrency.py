@@ -500,21 +500,27 @@ def test_stats_read_in_parallel_with_ingest() -> None:
         return read
 
     ingested = [0]
+    reads_when_stopped: list[int] = []
 
     def produce() -> None:
         # At least `least` ingests, then more until every reader has read twice during
-        # ingestion; the cap only turns a reader that never gets to run into a failure.
-        while ingested[0] < least or (ingested[0] < cap and not all(len(s) > 2 for s in seen)):
+        # ingestion. The reads are counted here, while ingestion is still going on; reaching
+        # the cap first fails the test below.
+        while ingested[0] < cap:
             engine.ingest(batch)
             ingested[0] += 1
+            if ingested[0] >= least and all(len(s) > 2 for s in seen):
+                break
+        reads_when_stopped.extend(len(s) - 1 for s in seen)
 
     run_concurrently(produce, [reader(s) for s in seen])
     ingests = ingested[0]
+    assert all(n >= 2 for n in reads_when_stopped), (
+        f"reads per reader during {ingests} ingests (cap {cap}): {reads_when_stopped}")
     reader_threads = {s[0] for s in seen}
     assert not reader_threads & recorder.threads, "a stats reader took the lifecycle lock"
     for slot in seen:
         stats = slot[1:]
-        assert len(stats) > 2, f"a reader read {len(stats) - 1} times during {ingests} ingests"
         for field in ("events_ingested", "events_out_of_bounds", "snapshots_published", "uptime_ns"):
             values = [getattr(s, field) for s in stats]
             assert all(isinstance(v, int) and v >= 0 for v in values), field
