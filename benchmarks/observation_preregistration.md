@@ -409,7 +409,7 @@ policy)`. It mirrors the structure of the standard library's `queue.Queue`: one
 
 | Queue | Capacity | Time depth at 100k / 20M/s / 16 ms |
 |---|---|---|
-| Finished frame, `K_ff` | 4 publications | 64 ms |
+| Finished frame, `K_ff` | 4 publications | 80 ms (publications are 20 ms apart: correction 1, 24) |
 | Raw batch, `K_raw` | `ceil(64 ms / batch period)` | 13 batches = 65 ms |
 
 The same capacities serve the EP arms' raw queue (EP-QB). Capacities for other conditions,
@@ -753,7 +753,7 @@ stream only.
 | Offered rate | 20M events/s | the project's target (decisions.md 16); paced single-producer evidence exists at this rate |
 | Publication interval | 16 ms | the Engine's default; a display-rate cadence |
 | Kernel | `event_count` (windowed) | the windowed semantics, where skipped and dropped publications leave events unobserved (7.4); the running kernel is in the follow-up study |
-| Warm-up / window | 5 s / 10 s | 5 s as in the paced out-of-bounds check; 10 s gives 2,000 steps (20 samples in each run's p99 tail) and 625 publications per run |
+| Warm-up / window | 5 s / 10 s | 5 s as in the paced out-of-bounds check; 10 s gives 2,000 steps (20 samples in each run's p99 tail) and 500 publications per run (correction 1, 24) |
 | Consumer counts | N ∈ {1, 4}, plus N = 0 for A, F, G, H, H′ | see below |
 | Repetitions | 5 (P1, P2) | the gate's 5 for primary experiments |
 
@@ -1574,3 +1574,19 @@ Git history thus establishes that the protocol predates the results.
     a preregistered analysis.
 - **Deviations from this protocol** that occur anyway are reported in the results with
   their extent.
+
+### 24.1 Listed corrections
+
+Corrections of descriptive figures that change no parameter, rule or definition.
+
+1. **2026-09-30, before V3, V5 and any campaign run.** Two figures derived from the publication
+   interval were wrong. The cadence rule (6.3) is evaluated once per step, and steps are 5 ms
+   apart, so with a 16 ms interval the first call that qualifies comes 20 ms after the last
+   publication. The effective spacing is therefore 20 ms: 50 publications/s.
+   - 11.3: "625 publications per run" is now 500 per 10 s window.
+   - 6.5.1: K_ff's time depth, 4 publications, is now 80 ms, not 64 ms.
+   - Unchanged: K_ff = 4, and the 64 ms time-depth rule that defines K_raw = 13 (6.5.1).
+   - Unchanged: every threshold, rule and cell.
+   - Data existing when this was written: validation output only (V1, V2, V4, V6). The V4 dry
+     run showed about 50 publications/s.
+   - The draft had the same error (1,250 per 20 s).
