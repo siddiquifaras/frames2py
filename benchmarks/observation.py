@@ -1213,8 +1213,13 @@ def _measure(request: dict[str, Any], condition: Condition, source: Source, offs
         recorder.close()
         out["recorder_close_ns"] = time.perf_counter_ns() - close_start
         out["drain_timeout"] = bool(recorder_result.get("drain_timeout"))
-        drained = recorder_result.get("drained_at")
-        out["completion_delay_ns"] = None if drained is None or not ctx.t1 else max(0, drained - ctx.t1)
+        rc = getattr(arm, "recorder_consumer", None)
+        drained = "drained_at" in recorder_result
+        last_write = rc.log.o[-1] if rc is not None and rc.log.o else None
+        # The queue was empty from the end of its last write: that, not when the recorder
+        # thread's timed get noticed, ends the completion delay (6.4).
+        out["completion_delay_ns"] = (None if not drained or not ctx.t1 else
+                                      0 if last_write is None else max(0, last_write - ctx.t1))
 
     arrays: dict[str, NDArray[Any]] = {
         **producer_log.arrays(),
