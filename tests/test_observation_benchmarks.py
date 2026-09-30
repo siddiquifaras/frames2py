@@ -346,6 +346,18 @@ def test_every_arm_accounts_for_every_batch_publication_and_item(tmp_path: Path,
     assert mac.held == set()
 
 
+@pytest.mark.parametrize(("arm", "workload", "n"), [("A", "none", 0), ("G", "none", 0), ("H", "none", 0),
+                                                   ("H", "W1", 1), ("B", "W1", 1), ("RB", "W1", 1)])
+def test_the_accounting_holds_with_aggregate_only_instrumentation(tmp_path: Path, mac: FakeMac, arm: str,
+                                                                   workload: str, n: int) -> None:
+    request = {"run_id": f"agg_{ob.arm_slug(arm)}_{n}", "experiment": "test", "arm": arm, "workload": workload,
+               "n": n, "runtime": "A", "condition": TINY.to_record(), "out_dir": str(tmp_path),
+               "tmp_dir": str(tmp_path / "tmp"), "check_runtime": False, "instrumentation": "aggregate"}
+    record = ob.run(request)
+    assert record["errors"] == [] and record["alive_after_grace"] == []
+    assert record["integrity"] == {"harness": [], "problems": []}
+
+
 @pytest.mark.parametrize("arm", ["EP-H", "EP-QB", "EP-QE"])
 def test_the_preservation_arms_record_every_batch_fed(tmp_path: Path, mac: FakeMac, arm: str) -> None:
     require_backend("h5py", "hdf5plugin")
