@@ -1590,3 +1590,27 @@ Corrections of descriptive figures that change no parameter, rule or definition.
    - Data existing when this was written: validation output only (V1, V2, V4, V6). The V4 dry
      run showed about 50 publications/s.
    - The draft had the same error (1,250 per 20 s).
+
+### 24.2 Amendments
+
+1. **Amendment 1, 2026-09-30: a harness defect found in V3 (14.2).**
+   - **Defect.** The integrity check that each queue's dequeue count equals what its
+     consumer took (21.4) compared the count with the consumer's per-item key log.
+     Aggregate-only instrumentation (V3, 22) does not keep that log, so the check failed even
+     when nothing was lost. The second V3 run, `V3_B_W1_N1_B_aggregate_rep1`, was classified
+     INVALID_INTEGRITY on `queue 0: dequeued 750, consumer took 0`: 750 items were enqueued,
+     750 dequeued, none remained, and the consumer observed all 750.
+   - **Fix.** Commit `866397348486e7f5d4e08b32ca2a61a8a933ca82` compares the dequeue count with the consumer's observation count,
+     which both instrumentation modes keep. It adds a test of the accounting under
+     aggregate-only instrumentation. Nothing else in the harness changes.
+   - **What changes in the protocol.** Nothing. The check, its rule and every parameter,
+     threshold and cell stay as written. Only the harness's implementation of the check is
+     corrected.
+   - **Data existing when this was written.** Validation only: V1, V2, V4 and V6 of Session 1,
+     and the two V3 runs of `scratch/observation_study/validation/V3-20260930T151247Z/`. That
+     directory holds one VALID run and the INVALID_INTEGRITY run above. Both are kept and
+     labelled with this defect, and neither is used. No V5 or campaign run existed.
+   - **Affected.** V3, which is re-run whole. V1, V2, V4 and V6 are unaffected: their runs
+     used full instrumentation, under which the key log and the observation count agree, and
+     they all passed.
+
