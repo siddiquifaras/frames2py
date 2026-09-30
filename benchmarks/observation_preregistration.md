@@ -1656,4 +1656,25 @@ Corrections of descriptive figures that change no parameter, rule or definition.
      measured run is affected: the defect is in the driver's bookkeeping after an
      interruption, not in any code that measures. At the user's instruction (2026-09-30),
      P1 pass 1 resumes from its last completed run (13.4) rather than being re-run.
+4. **Amendment 4, 2026-10-01: a harness defect found in P2 (14.2), introduced by amendment 1's
+   fix.**
+   - **What happened.** The first P2 run with no state-observation consumer,
+     `P2_EP-QE_none_N0_A_r0_p1_a1`, was a HARNESS_FAILURE: `KeyError: 'c0_samples'` in the
+     integrity accounting. The campaign stopped there, at 21:46 UTC on 2026-09-30.
+   - **Defect.** Amendment 1's fix (`8663973`) read consumer i's observation count for every
+     queue i. EP-QB and EP-QE at N_SO = 0 have a recorder queue and no consumer. The count is
+     needed only for B, C and E, where every queue has its consumer.
+   - **Fix.** Commit `602f9b3febc1b6113d6c0e0887f5858d4ed4fec4` reads the count only for B, C and E. It extends the P2 tests to
+     N_SO = 0, which fail on the defective check. It raises the campaign revision to 1, so P2's
+     passes run as new pass records.
+   - **What changes in the protocol.** Nothing: rules, parameters and cells stay as written.
+   - **Data existing when this was written.**
+     - P1 passes 1 to 5, complete: 590 VALID runs (118 cells × 5), plus 34 INVALID_ENV
+       attempts. They are unaffected: every P1 queue arm has a consumer per queue, and none
+       failed the check.
+     - P2 pass 1, revision 0: two VALID runs and the HARNESS_FAILURE above.
+   - **Affected.** P2 pass 1, which is re-run whole at revision 1. Its revision-0 attempts are
+     kept and not used. P2 passes 2 to 5 had not started and run at revision 1. The failed
+     run's recording, `scratch/observation_study/tmp/P2_EP-QE_none_N0_A_r0_p1_a1.h5`, is kept
+     unread: the harness stopped before its read-back.
 
