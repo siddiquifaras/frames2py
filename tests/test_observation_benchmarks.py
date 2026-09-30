@@ -199,6 +199,32 @@ def test_a_pass_requeues_environment_failures_at_its_end_at_most_twice() -> None
     assert stopped == {"a": "INVALID_INTEGRITY"}
 
 
+def test_an_attempt_that_finished_after_its_driver_stopped_is_recorded_once(tmp_path: Path) -> None:
+    cell = ob.pass_order("P1", 1)[0]
+    run_id = f"{cell.id}_r0_p1_a2"
+    (tmp_path / "runs").mkdir()
+    request = {**cell.to_record(), "run_id": run_id, "out_dir": str(tmp_path / "runs")}
+    (tmp_path / "runs" / f"{run_id}.json").write_text(json.dumps({**good_record(), "request": request}))
+    ledger = drv.Ledger(tmp_path)
+    ledger.append({"run_id": f"{cell.id}_r0_p1_a1", "experiment": "P1", "pass": 1, "revision": 0,
+                   "cell": cell.to_record(), "outcome": "INVALID_ENV", "ended_at": "1"})
+    added = drv.reconcile(tmp_path, ledger, "s")
+    assert [(e["run_id"], e["outcome"], e["attempt"]) for e in added] == [(run_id, "INVALID_ENV", 2)]
+    assert drv.reconcile(tmp_path, ledger, "s") == []
+    todo, attempts = drv.pass_plan("P1", 1, 0, ledger.entries())
+    assert attempts[cell.id] == 2 and todo[-1].id == cell.id
+
+
+def test_an_interrupted_attempt_keeps_an_integrity_finding(tmp_path: Path) -> None:
+    cell = ob.pass_order("P1", 1)[0]
+    run_id = f"{cell.id}_r0_p1_a1"
+    (tmp_path / "runs").mkdir()
+    record = {**good_record(integrity={"harness": [], "problems": ["lost"]}),
+              "request": {**cell.to_record(), "run_id": run_id, "out_dir": str(tmp_path / "runs")}}
+    (tmp_path / "runs" / f"{run_id}.json").write_text(json.dumps(record))
+    assert [e["outcome"] for e in drv.reconcile(tmp_path, drv.Ledger(tmp_path), "s")] == ["INVALID_INTEGRITY"]
+
+
 # ---------------------------------------------------------------- watermark resolution (9.2)
 
 

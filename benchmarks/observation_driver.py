@@ -600,6 +600,49 @@ def run_pass_with_retries(order: Sequence[K], run: Callable[[K, int], str]) -> d
     return final
 
 
+RUN_ID: Final = re.compile(r"_r(\d+)_p(\d+)_a(\d+)$")
+INTERRUPTED: Final = "the driver was interrupted during this attempt; the checks around it were not recorded"
+
+
+def reconcile(directory: Path, ledger: Ledger, session: str) -> list[dict[str, Any]]:
+    """Record every run that has a result file but no ledger entry: a child that finished after
+    its driver stopped. It becomes an attempt of its pass (every attempt is kept, 14.1), so its
+    id is never reused. With no environment record around it, it is at best INVALID_ENV; a
+    harness, shutdown or integrity outcome in its own record still takes precedence."""
+    known = {e["run_id"] for e in ledger.entries()}
+    added = []
+    for path in sorted((directory / "runs").glob("*.json")):
+        run_id = path.stem
+        match = RUN_ID.search(run_id)
+        if run_id in known or match is None:
+            continue
+        record: dict[str, Any] = json.loads(path.read_text())
+        request = record.get("request", {})
+        cell = Cell(request["experiment"], request["arm"], request["workload"], int(request["n"]), request["runtime"])
+        outcome, flags, reasons = classify(None if record.get("t0") is None else 0, record, {}, {},
+                                           {"violations": []}, sustained_of(record))
+        if outcome in (VALID, INVALID_ENV):
+            # Only what the run's own record shows: the checks around it were never made.
+            from benchmarks import power as power_module
+
+            awake = record.get("power")
+            reasons = ([r for r, hit in (("the machine slept during the run", power_module.slept_during(awake)),
+                                         ("the run ended outside full wake",
+                                          power_module.ended_outside_full_wake(awake))) if hit]
+                       + ([record["power_refused"]] if record.get("power_refused") else []))
+            outcome, flags = INVALID_ENV, []
+        entry = {"run_id": run_id, "experiment": request["experiment"], "pass": int(match.group(2)),
+                 "revision": int(match.group(1)), "attempt": int(match.group(3)), "cell": cell.to_record(),
+                 "session": session, "started_at": None,
+                 "ended_at": datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.UTC).isoformat(
+                     timespec="seconds"),
+                 "gate_env": True, "instrumentation": request.get("instrumentation", "full"), "outcome": outcome,
+                 "flags": flags, "reasons": [INTERRUPTED, *reasons], "reconciled": True}
+        ledger.append(entry)
+        added.append(entry)
+    return added
+
+
 def write_progress(directory: Path, session: str, state: dict[str, Any]) -> None:
     state = {**state, "session": session, "at": _now()}
     tmp = directory / "progress.json.tmp"
@@ -641,6 +684,14 @@ def campaign(experiments: Sequence[str], passes: Sequence[int], *, directory: Pa
     counts: Counter[str] = Counter()
     stopped: str | None = None
     completed: list[str] = []
+    for entry in reconcile(directory, ledger, session):
+        counts[entry["outcome"]] += 1
+        write_progress(directory, session, {"line": f"recorded interrupted attempt {entry['run_id']}: "
+                                                    f"{entry['outcome']}", "last": entry})
+        if entry["outcome"] in STOPPING:
+            stopped = f"{entry['outcome']} at {entry['run_id']} (interrupted attempt): {entry['reasons']}"
+    if stopped:
+        experiments = []
     for experiment in experiments:
         for pass_index in passes:
             todo, attempts = pass_plan(experiment, pass_index, revision, ledger.entries())
