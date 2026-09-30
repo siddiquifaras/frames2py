@@ -1,5 +1,5 @@
 """Command line: ``uv run python -m benchmarks {list,run,report,stage2,gate,adapters,adapters-report,
-recorder,viewer,replay,consumers-report}``."""
+recorder,viewer,replay,consumers-report,observation}``."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from benchmarks import adapters, consumers, environment, gate, report, results
 from benchmarks.matrix import SUITES, Cell
@@ -108,8 +109,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     consumers_report_cmd = commands.add_parser("consumers-report", help="tabulate a consumer characterisation document")
     consumers_report_cmd.add_argument("result", type=Path)
     commands.add_parser("consumers-worker", help="internal: one consumer run, request on stdin, record on stdout")
+    _add_observation(commands)
 
     args = parser.parse_args(argv)
+
+    if args.command == "observation":
+        return _observation(args)
 
     if args.command == "worker":
         json.dump(worker(json.load(sys.stdin)), sys.stdout)
@@ -195,6 +200,61 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error(f"{args.out} exists; refusing to overwrite a result")
         args.out.write_text(json.dumps(verdicts, indent=1) + "\n")
     print(gate.summary(verdicts))
+    return 0
+
+
+def _add_observation(commands: Any) -> None:
+    study = commands.add_parser("observation", help="the observation study (benchmarks/observation_preregistration.md)")
+    sub = study.add_subparsers(dest="observation_command", required=True)
+    validate = sub.add_parser("validate", help="run a validation stage (22)")
+    validate.add_argument("--stage", choices=["V1", "V2", "V3", "V4", "V6"], required=True)
+    validate.add_argument("--no-env-gate", action="store_true",
+                          help="record the environment checks without gating on them (V4 on a machine in normal use)")
+    sub.add_parser("calibrate", help="V5: calibrate K5 and write the calibration record")
+    run = sub.add_parser("run", help="run campaign passes (11.4)")
+    run.add_argument("--experiment", choices=["P1", "P2", "all"], default="all")
+    run.add_argument("--passes", type=int, nargs="+", default=[1, 2, 3, 4, 5])
+    run.add_argument("--unattended", action="store_true")
+    run.add_argument("--session-retries", type=int, default=0)
+    run.add_argument("--retry-wait", type=float, default=600.0, help="seconds between session-check retries")
+    analyse = sub.add_parser("analyse", help="tables and figure data from a campaign directory")
+    analyse.add_argument("--campaign", type=Path, default=None)
+    analyse.add_argument("--out", type=Path, required=True)
+    sub.add_parser("worker", help="internal: one run, request on stdin")
+    sub.add_parser("validate-worker", help="internal: one validation stage, request on stdin")
+
+
+def _observation(args: argparse.Namespace) -> int:
+    command = args.observation_command
+    if command == "worker":
+        from benchmarks import observation
+
+        return observation.worker_main()
+    if command == "validate-worker":
+        from benchmarks import observation_validation
+
+        json.dump(observation_validation.validate_worker(json.load(sys.stdin)), sys.stdout, default=str)
+        return 0
+    from benchmarks import observation_driver as driver
+
+    if command == "validate":
+        out, ok = driver.validate(args.stage, gate_env=not args.no_env_gate)
+        print(f"{args.stage}: {'passed' if ok else 'FAILED'}; output in {out}")
+        return 0 if ok else 1
+    if command == "calibrate":
+        out, ok = driver.calibrate()
+        print(f"V5: {'passed' if ok else 'FAILED'}; output in {out}")
+        return 0 if ok else 1
+    if command == "run":
+        experiments = ["P1", "P2"] if args.experiment == "all" else [args.experiment]
+        return driver.campaign(experiments, args.passes, unattended=args.unattended,
+                               session_retries=args.session_retries, retry_wait_s=args.retry_wait)
+    from benchmarks import observation_analysis
+
+    summary = observation_analysis.analyse(args.campaign or driver.CAMPAIGN_DIR, args.out)
+    print(json.dumps({k: summary[k] for k in ("cells", "p2_cells", "valid_runs", "attempts")}))
+    for name, verdict in summary["verdicts"].items():
+        print(f"{name}: {verdict['verdict']}")
     return 0
 
 
