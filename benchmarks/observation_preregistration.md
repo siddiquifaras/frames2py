@@ -1633,4 +1633,27 @@ Corrections of descriptive figures that change no parameter, rule or definition.
      kept, not used) and the earlier directory under amendment 1. No V5 or campaign run
      existed.
    - **Affected.** V3, which is re-run whole.
+3. **Amendment 3, 2026-09-30: a harness defect found when the campaign stopped (14.2).**
+   - **What happened.** The machine lost AC power at 17:14 UTC during P1 pass 1, and every
+     run after that was INVALID_ENV. Under the stop rule "environment checks keep failing",
+     the launcher stopped the driver at about 17:20 UTC. A child had already started. It
+     finished `P1_B_W5_N1_A_r0_p1_a2` on battery and wrote its result files after the driver
+     had gone.
+   - **Defect.** The driver had no way to record an attempt that finished after it stopped. The
+     attempt had result files but no ledger entry and no environment checks around it.
+     Resuming the pass would have reused its id and stopped on `FileExistsError`, and the
+     attempt would have been missing from the ledger, where every attempt is kept (14.1).
+   - **Fix.** Commit `a72c18e7b3f4a098551579178476bb69785a87a5`: on start, the driver records every run file that has no ledger
+     entry as an attempt of its pass. It is INVALID_ENV, "the driver was interrupted during
+     this attempt; the checks around it were not recorded", unless the run's own record shows
+     a HARNESS_FAILURE, SHUTDOWN_TIMEOUT, CRASH or INVALID_INTEGRITY, which takes precedence.
+     Its id is never reused. The fix adds tests.
+   - **What changes in the protocol.** Nothing: rules, parameters and cells stay as written.
+   - **Data existing when this was written.** V1 to V6, and P1 pass 1 of session
+     `20260930T163756Z-55172e`: 124 attempts in the ledger (106 VALID, 18 INVALID_ENV on AC
+     power) plus the unrecorded attempt above.
+   - **Affected.** Only that attempt, which becomes attempt 2 of its cell, INVALID_ENV. No
+     measured run is affected: the defect is in the driver's bookkeeping after an
+     interruption, not in any code that measures. At the user's instruction (2026-09-30),
+     P1 pass 1 resumes from its last completed run (13.4) rather than being re-run.
 
