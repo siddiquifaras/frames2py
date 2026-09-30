@@ -400,10 +400,11 @@ def test_the_accounting_holds_with_aggregate_only_instrumentation(tmp_path: Path
     assert record["integrity"] == {"harness": [], "problems": []}
 
 
+@pytest.mark.parametrize("n_so", [0, 1])
 @pytest.mark.parametrize("arm", ["EP-H", "EP-QB", "EP-QE"])
-def test_the_preservation_arms_record_every_batch_fed(tmp_path: Path, mac: FakeMac, arm: str) -> None:
+def test_the_preservation_arms_record_every_batch_fed(tmp_path: Path, mac: FakeMac, arm: str, n_so: int) -> None:
     require_backend("h5py", "hdf5plugin")
-    record = run_tiny(tmp_path, arm, "W1", 1)
+    record = run_tiny(tmp_path, arm, "W1" if n_so else "none", n_so)
     assert record["integrity"] == {"harness": [], "problems": []}
     assert record["readback"]["ok"] and record["readback"]["events"] == record["batches"] * TINY.batch_size
     assert not (tmp_path / "tmp" / f"{record['run_id']}.h5").exists()

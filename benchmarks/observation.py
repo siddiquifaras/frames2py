@@ -1353,9 +1353,10 @@ def integrity(arm: str, n: int, condition: Condition, source: Source, out: dict[
             problems.append(f"queue {i}: offered {ql['offered']} of {published} publications")
         if arm in ("RB", "EP-QB", "EP-QE") and ql["offered"] != count:
             problems.append(f"queue {i}: offered {ql['offered']} of {count} batches")
-        observed = int(arrays[f"c{i}_samples"][7])  # every item taken is observed, in both instrumentation modes
-        if arm in ("B", "C", "E") and ql["dequeued"] != observed:
-            problems.append(f"queue {i}: dequeued {ql['dequeued']}, consumer observed {observed}")
+        if arm in ("B", "C", "E"):
+            observed = int(arrays[f"c{i}_samples"][7])  # every item taken is observed, in both instrumentation modes
+            if ql["dequeued"] != observed:
+                problems.append(f"queue {i}: dequeued {ql['dequeued']}, consumer observed {observed}")
     if arm == "RB":
         for i, (ql, r) in enumerate(zip(out["queues"], out["raw"])):
             enqueued_events = ql["enqueued"] * condition.batch_size

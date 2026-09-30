@@ -44,8 +44,9 @@ from benchmarks.observation import (
 CAMPAIGN_DIR: Final = STUDY_DIR / "campaign"
 VALIDATION_DIR: Final = STUDY_DIR / "validation"
 CALIBRATION_RECORD: Final = Path(__file__).with_name("observation_calibration.json")
-CAMPAIGN_REVISION: Final = 0
-"""Raised by an amendment (24) whose re-run passes replace earlier ones; both are kept."""
+CAMPAIGN_REVISION: Final = 1
+"""Raised by an amendment (24) whose re-run passes replace earlier ones; both are kept.
+1: amendment 4 (P2 pass 1 re-run whole; P1's passes stay at revision 0)."""
 
 MAX_ATTEMPTS: Final = 3
 """An INVALID_ENV attempt is re-queued at the end of its pass at most twice (14.1)."""
