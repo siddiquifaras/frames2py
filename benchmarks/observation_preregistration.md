@@ -1613,4 +1613,24 @@ Corrections of descriptive figures that change no parameter, rule or definition.
    - **Affected.** V3, which is re-run whole. V1, V2, V4 and V6 are unaffected: their runs
      used full instrumentation, under which the key log and the observation count agree, and
      they all passed.
+2. **Amendment 2, 2026-09-30: a second harness defect found in V3 (14.2).**
+   - **Defect.** The V3 stage declared V3 failed as soon as a run was INVALID_ENV. The
+     protocol re-queues such a run at the end of its pass, at most twice (14.1). In the V3
+     re-run under amendment 1 (`scratch/observation_study/validation/V3-20260930T153509Z/`),
+     69 of 72 runs were VALID. Three were INVALID_ENV on background load, from 15:55 to
+     15:58 UTC:
+     - `V3_A_none_N0_B_aggregate_rep3`: WindowServer at or above 10%, and other processes
+       together at 42.3% and 44.5%;
+     - `V3_H_W1_N1_A_full_rep3`: other processes together at 37.7%;
+     - `V3_H_W1_N1_B_full_rep3`: other processes together at 37.3%.
+   - **Likely cause of the load (INFERENCE).** The launcher's own foreground activity: those
+     minutes are when the launcher switched from background waits to a foreground wait. It
+     makes only background waits from here on (13.4).
+   - **Fix.** Commit `28f43df75cf84751d3eab469e4791146eae24b17` runs each V3 repetition as a pass under 14.1's retry rule. It adds
+     a test of that rule. Nothing else changes.
+   - **What changes in the protocol.** Nothing: rules, parameters and cells stay as written.
+   - **Data existing when this was written.** Validation only: that V3 directory (72 runs,
+     kept, not used) and the earlier directory under amendment 1. No V5 or campaign run
+     existed.
+   - **Affected.** V3, which is re-run whole.
 
