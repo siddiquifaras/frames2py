@@ -183,6 +183,22 @@ def test_an_interrupted_pass_resumes_after_its_last_completed_run() -> None:
     assert [c.id for c in other_revision] == [c.id for c in order]
 
 
+def test_a_pass_requeues_environment_failures_at_its_end_at_most_twice() -> None:
+    script = {("a", 1): "VALID", ("b", 1): "INVALID_ENV", ("c", 1): "VALID", ("b", 2): "INVALID_ENV",
+              ("b", 3): "INVALID_ENV", ("d", 1): "INVALID_ENV", ("d", 2): "VALID"}
+    calls: list[tuple[str, int]] = []
+
+    def run(key: str, n: int) -> str:
+        calls.append((key, n))
+        return script[(key, n)]
+
+    final = drv.run_pass_with_retries(["a", "b", "c", "d"], run)
+    assert calls == [("a", 1), ("b", 1), ("c", 1), ("d", 1), ("b", 2), ("d", 2), ("b", 3)]
+    assert final == {"a": "VALID", "b": "INVALID_ENV", "c": "VALID", "d": "VALID"}
+    stopped = drv.run_pass_with_retries(["a", "b"], lambda key, n: "INVALID_INTEGRITY")
+    assert stopped == {"a": "INVALID_INTEGRITY"}
+
+
 # ---------------------------------------------------------------- watermark resolution (9.2)
 
 

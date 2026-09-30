@@ -26,7 +26,7 @@ import uuid
 from collections import Counter
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, TypeVar
 
 from benchmarks.observation import (
     ENVIRONMENTS,
@@ -580,6 +580,26 @@ def pass_plan(experiment: str, pass_index: int, revision: int, entries: Sequence
     return todo, dict(attempts)
 
 
+K = TypeVar("K")
+
+
+def run_pass_with_retries(order: Sequence[K], run: Callable[[K, int], str]) -> dict[K, str]:
+    """One pass in *order*, with 14.1's rule: an INVALID_ENV run is re-queued at the end of the
+    pass, at most twice. Stops at the first outcome in ``STOPPING``. Returns each run's last
+    outcome; ``run(key, attempt)`` makes one attempt."""
+    todo = [(key, 1) for key in order]
+    final: dict[K, str] = {}
+    while todo:
+        key, n = todo.pop(0)
+        outcome = run(key, n)
+        final[key] = outcome
+        if outcome in STOPPING:
+            break
+        if outcome == INVALID_ENV and n < MAX_ATTEMPTS:
+            todo.append((key, n + 1))
+    return final
+
+
 def write_progress(directory: Path, session: str, state: dict[str, Any]) -> None:
     state = {**state, "session": session, "at": _now()}
     tmp = directory / "progress.json.tmp"
@@ -727,17 +747,22 @@ def validate(stage: str, *, gate_env: bool) -> tuple[Path, bool]:
         for rep in range(1, V3_REPETITIONS + 1):
             order = list(runs)
             random.Random(20261001 + 300 + rep).shuffle(order)
-            for arm, w, n, rt, mode in order:
+
+            def run_v3(key: tuple[str, str, int, str, str], n_attempt: int, rep: int = rep) -> str:
+                arm, w, n, rt, mode = key
                 cell = Cell("V3", arm, w, n, rt)
-                entry = attempt(cell, experiment="V3", pass_index=rep, attempt_index=1, revision=0, session=session,
-                                out_dir=out, k5=None, gate_env=gate_env, instrumentation=mode,
-                                run_id=f"{cell.id}_{mode}_rep{rep}")
+                entry = attempt(cell, experiment="V3", pass_index=rep, attempt_index=n_attempt, revision=0,
+                                session=session, out_dir=out, k5=None, gate_env=gate_env, instrumentation=mode,
+                                run_id=f"{cell.id}_{mode}_rep{rep}_a{n_attempt}")
                 ledger.append(entry)
-                ok = ok and entry["outcome"] == VALID
                 print(f"V3 {entry['run_id']}: {entry['outcome']} {entry['reasons']}", flush=True)
-                if entry["outcome"] in STOPPING:
-                    return out, False
                 time.sleep(IDLE_GAP_S)
+                return str(entry["outcome"])
+
+            final = run_pass_with_retries(order, run_v3)
+            if any(outcome in STOPPING for outcome in final.values()):
+                return out, False
+            ok = ok and all(outcome == VALID for outcome in final.values())
     else:
         raise ValueError(f"unknown stage {stage!r}")
     (out / "passed.json").write_text(json.dumps({"stage": stage, "passed": ok, "at": _now(),
