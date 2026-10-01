@@ -251,7 +251,8 @@ class Engine:
         waiters = self._waiters
         waiters.append(marker)
         while (waiter := waiters.popleft()) is not marker:
-            waiter.release()
+            if type(waiter) is not object:  # a marker a publication interrupted mid-drain left behind
+                waiter.release()
         self._accumulator._close_window()
         self._snapshots_published += 1
         self._pending = False

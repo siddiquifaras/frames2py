@@ -8,6 +8,7 @@ against publication are covered exhaustively by ``test_wait_interleavings.py``.
 
 from __future__ import annotations
 
+import collections
 import concurrent.futures
 import decimal
 import fractions
@@ -375,6 +376,89 @@ class TestInterruption:
         assert len(e._waiters) == 0  # the interrupted call left no registration behind
         second = published(e, producer, 2)
         assert e.wait_for_newer(first.meta.sequence, timeout=0) is second
+
+
+class _Interrupted(Exception):
+    """Stands in for a KeyboardInterrupt that lands on the producer mid-publication."""
+
+
+class _InterruptingRegistry(collections.deque):  # type: ignore[type-arg]
+    """The Engine's waiter registry, raising once at the *at*-th ``popleft``, before popping."""
+
+    def __init__(self, items: Any, at: int) -> None:
+        super().__init__(items)
+        self._calls, self._at = 0, at
+
+    def popleft(self) -> Any:
+        self._calls += 1
+        if self._calls == self._at:
+            raise _Interrupted
+        return super().popleft()
+
+
+class _DrainsWithoutSkipping(impl.Engine):
+    """A deliberately broken Engine: its drain releases whatever it pops before its own marker,
+    including a marker an interrupted publication left behind."""
+
+    def _publish(self, now_ns: int) -> None:
+        self._sequence += 1
+        buffer = self._publisher.begin_write()
+        self._accumulator._read_into(buffer)
+        self._publisher.end_write(impl.SnapshotMeta(watermark=self._accumulator.watermark, sequence=self._sequence))
+        marker = object()
+        self._waiters.append(marker)
+        while (waiter := self._waiters.popleft()) is not marker:
+            waiter.release()
+        self._accumulator._close_window()
+        self._snapshots_published += 1
+        self._pending = False
+        self._last_published_ns = now_ns
+
+
+def _after_an_interrupted_drain(engine_type: Any) -> tuple[BaseException | None, Any, Any]:
+    """Interrupt a publication after it released one of two waiters, then publish again.
+    Returns what the second publication raised, if anything, the waiter the interrupted one
+    stranded, and the snapshot it should get."""
+    e = engine_type(SENSOR, "event_count", snapshot_interval_ms=0)
+    producer = ProducerThread()
+    try:
+        first = published(e, producer, 1)
+        waiters = [Waiter(e, first.meta.sequence) for _ in range(2)]
+        for waiter in waiters:
+            waiter.start()
+        until_registered(e, 2)
+        e._waiters = _InterruptingRegistry(e._waiters, at=2)
+        with pytest.raises(_Interrupted):
+            producer(e.ingest, batch(2))
+        e._waiters = collections.deque(e._waiters)
+        deadline = time.monotonic() + HANG_GUARD_S
+        while all(w.is_alive() for w in waiters):  # the waiter the interrupted publication released
+            assert time.monotonic() < deadline, "the interrupted publication released no waiter"
+            time.sleep(0)
+        released = next(w for w in waiters if not w.is_alive())
+        assert released.outcome().meta.watermark == 2
+        (stranded,) = [w for w in waiters if w is not released]
+        assert stranded.is_alive()
+        error = None
+        try:
+            producer(e.ingest, batch(3))
+        except Exception as raised:  # noqa: BLE001 - returned to the caller
+            error = raised
+        return error, stranded, e.snapshot()
+    finally:
+        producer.close()
+
+
+class TestInterruptedPublication:
+    def test_a_later_publication_works_and_releases_the_stranded_waiter(self) -> None:
+        error, stranded, snapshot = _after_an_interrupted_drain(impl.Engine)
+        assert error is None
+        assert stranded.outcome() is snapshot and snapshot.meta.watermark == 3
+
+    def test_the_check_catches_a_drain_that_releases_a_leftover_marker(self) -> None:
+        error, stranded, _ = _after_an_interrupted_drain(_DrainsWithoutSkipping)
+        assert isinstance(error, AttributeError)
+        stranded.join(HANG_GUARD_S)
 
 
 class TestNoHistory:
