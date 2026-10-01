@@ -23,7 +23,7 @@ _VERIFIED_FREE_THREADED: Final = frozenset({(3, 14)})
 _allocate_lock = threading.Lock
 
 
-def _sequence_floor(sequence: object) -> int:
+def _sequence_floor(sequence: Any) -> int:
     """The sequence a snapshot must exceed to be newer: *sequence*, or -1 for ``None``."""
     if sequence is None:
         return -1
