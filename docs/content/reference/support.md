@@ -38,6 +38,12 @@ The core needs NumPy and nothing else. It is pure Python (a `py3-none-any` wheel
 | CPython 3.15t and later, GIL disabled | **refused** until each minor version is verified |
 | any free-threaded build with the GIL enabled (`PYTHON_GIL=1`) | behaves as a standard build |
 
+- **Recommended patch level: 3.14.5 or later.** CPython 3.14.0 to 3.14.4 have a race in an
+  internal lock ([gh-148820](https://github.com/python/cpython/issues/148820)) that can end
+  the process with a fatal error when a signal or a spurious wakeup lands while threads
+  contend for that lock. `wait_for_newer()` makes such contention routine: every publication
+  wakes each waiter. The Engine doesn't check the patch level. The race was not reproduced
+  in Frames2Py's tests.
 - **What "supported" means on 3.14t:** the full test suite passes, including the
   concurrency tests of the documented model (one producer thread, any number of consumer
   threads, lifecycle calls from any thread; see

@@ -113,9 +113,8 @@ complete producer and consumer.
 - **Not on the producer's thread.** Called from the thread that calls `ingest()`, it raises
   `RuntimeError`: that thread can't publish while it waits.
 - **Ctrl-C** in a main-thread waiter raises `KeyboardInterrupt` and leaves the Engine as it
-  was. A SIGINT that arrives in the instant before the wait blocks is acted on only when the
-  wait next wakes, at a publication, at the timeout or at another SIGINT: that is how
-  CPython's `Lock.acquire()` behaves, and it was seen on free-threaded 3.14.
+  was, as CPython's `Lock.acquire()` allows: a SIGINT arriving as the wait starts blocking
+  is acted on at its next wake, which is a publication, the timeout, or another SIGINT.
 
 ```python title="wait_for_newer.py"
 --8<-- "wait_for_newer.py"

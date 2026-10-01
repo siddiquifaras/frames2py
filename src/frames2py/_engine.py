@@ -162,10 +162,10 @@ class Engine:
         window wakes waiters like any other, and after ``reset()`` a waiter returns the first
         publication after it, whose sequence is larger than any before the reset. A reset that
         lands between a publication and the waiter's read leaves the waiter waiting for the
-        next one. ``KeyboardInterrupt`` propagates out of a main-thread wait and leaves the
-        Engine unchanged. CPython acts on a SIGINT that arrives in the instant before the wait
-        blocks only when the wait next wakes: at a publication, at the timeout, or at another
-        SIGINT.
+        next one. A SIGINT raises ``KeyboardInterrupt`` out of a main-thread wait and leaves the
+        Engine unchanged, as CPython's ``Lock.acquire()`` allows: a SIGINT arriving as the wait
+        starts blocking is acted on at its next wake, which is a publication, the timeout, or
+        another SIGINT.
 
         The call never takes the lock that ``ingest()`` holds. Each publication releases the
         waiters registered before it, one lock release each, on the publishing thread; it
