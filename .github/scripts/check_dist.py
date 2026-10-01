@@ -64,7 +64,8 @@ def check_common(errors: list[str], kind: str, names: list[str]) -> None:
             fail(errors, f"{kind}: bytecode {name}")
         if any(part in name for part in RETIRED):
             fail(errors, f"{kind}: retired prototype path {name}")
-        for dev in (".github/", "tests/", "benchmarks/", ".venv", ".gitignore", ".DS_Store", "dist/", "uv.lock"):
+        for dev in (".github/", "tests/", "benchmarks/", "verification/", ".venv", ".gitignore", ".DS_Store", "dist/",
+                    "uv.lock"):
             if dev in name:
                 fail(errors, f"{kind}: development material {name}")
         parts = PurePosixPath(name).parts
