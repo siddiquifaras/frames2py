@@ -39,7 +39,7 @@ construction or `reset()`; `None` before the first. It is not the last event's t
 events may arrive out of order. `timestamp_decay` evaluates its surface at the watermark,
 and each snapshot carries the watermark it was published at.
 
-**Sequence.** Each publication's number, increasing by one for the Engine's lifetime,
+**Sequence.** Each publication's number, strictly increasing for the Engine's lifetime,
 across `reset()`. A consumer that sees the same sequence twice has seen the same
 publication twice.
 

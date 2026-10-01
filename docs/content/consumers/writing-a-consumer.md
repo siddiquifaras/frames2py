@@ -18,9 +18,10 @@ second algorithm that works on the accumulated state. It needs no registration: 
    the Engine's ingest path; consumers never slow it down by waiting.
 2. **Poll at the publication cadence.** Sleep about `snapshot_interval_ms` between reads.
    Reading faster only returns the same snapshot again.
-3. **Detect new publications by `meta.sequence`.** It increases by one per publication, for
-   the Engine's lifetime. A jump of more than one means you skipped publications, which is
-   normal for a consumer slower than the cadence.
+3. **Detect new publications by `meta.sequence`.** It is strictly increasing for the
+   Engine's lifetime, across `reset()`: a higher number than the last one you handled means
+   a new publication. A consumer slower than the cadence skips publications, which is
+   normal; the sequence doesn't say how many were skipped.
 4. **Handle `None`.** `snapshot()` is `None` before the first publication and after
    `reset()` until the next.
 5. **Copy before you modify.** `snapshot.frame` is shared with every other consumer and
