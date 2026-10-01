@@ -55,6 +55,14 @@ def test_engine_methods(method: str, params: list[str]) -> None:
     assert [name for name, _, _ in _parameters(getattr(impl.Engine, method))][1:] == params
 
 
+def test_wait_for_newer_signature() -> None:
+    P = inspect.Parameter
+    assert _parameters(impl.Engine.wait_for_newer)[1:] == [
+        ("sequence", P.POSITIONAL_OR_KEYWORD, P.empty),
+        ("timeout", P.KEYWORD_ONLY, None),
+    ]
+
+
 @pytest.mark.parametrize(("method", "params"), [("accumulate", ["events"]), ("read", []), ("reset", [])])
 def test_accumulator_methods(method: str, params: list[str]) -> None:
     assert [name for name, _, _ in _parameters(getattr(impl.Accumulator, method))][1:] == params

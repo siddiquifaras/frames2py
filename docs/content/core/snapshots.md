@@ -85,8 +85,50 @@ returns `out`.
 
 Read at about the publication cadence (16 ms by default), not in a tight loop: a tight loop
 spends a core re-reading the same snapshot. Compare `snapshot.meta.sequence` with the last
-one you handled to tell a new publication from a repeat. [Writing a
-consumer](../consumers/writing-a-consumer.md) has a complete producer and consumer.
+one you handled to tell a new publication from a repeat, or block in `wait_for_newer()`
+(below) until there is one. [Writing a consumer](../consumers/writing-a-consumer.md) has a
+complete producer and consumer.
+
+## Waiting for a newer snapshot
+
+`engine.wait_for_newer(sequence, *, timeout=None)` blocks until a snapshot newer than
+`sequence` is published, then returns the latest one:
+
+- **Newer** means `snapshot.meta.sequence > sequence`. `None` accepts any publication.
+  `sequence` must be an `int` (not a bool) or `None`, and not negative.
+- **The latest, not the next.** If a newer snapshot is already published, the call returns
+  it at once. Otherwise it returns the snapshot published when it reads after a
+  publication, which needn't be `sequence + 1`: a slow consumer skips publications here
+  too. Passing back the `meta.sequence` you got gives strictly increasing snapshots.
+- **`timeout`** is in seconds on the monotonic clock: `None` or `math.inf` waits without
+  limit, `0` checks once without blocking. On timeout the call returns `None`, and only if
+  nothing newer is published when it checks after the timeout has elapsed. Negative or NaN
+  raises `ValueError`; a non-number raises `TypeError`.
+- **`stop()` and `reset()` wake nobody.** The publication `stop()` makes for a pending
+  window wakes waiters like any other. After `reset()`, a waiter returns the first
+  publication after it, whose sequence is higher than any before the reset; a reset that
+  lands between a publication and the waiter's read leaves the waiter waiting for the next
+  one. A consumer that must notice shutdown uses a timeout and its own flag.
+- **Not on the producer's thread.** Called from the thread that calls `ingest()`, it raises
+  `RuntimeError`: that thread can't publish while it waits.
+- **Ctrl-C** in a main-thread waiter raises `KeyboardInterrupt` and leaves the Engine as it
+  was. A SIGINT that arrives in the instant before the wait blocks is acted on only when the
+  wait next wakes, at a publication, at the timeout or at another SIGINT: that is how
+  CPython's `Lock.acquire()` behaves, and it was seen on free-threaded 3.14.
+
+```python title="wait_for_newer.py"
+--8<-- "wait_for_newer.py"
+```
+
+```text title="Output"
+--8<-- "wait_for_newer.out"
+```
+
+What it costs the producer: each publication releases the waiters registered before it,
+one lock release per waiter, on the publishing thread, and does one operation on the
+waiter registry even when nobody waits. It never waits for a waiter, and a waiter never
+holds anything the producer needs while running Python code. CPython's own synchronisation (the GIL, its
+internal locks, scheduling) is outside that, as it is for `snapshot()`.
 
 Holding on to a snapshot keeps its frame alive. The Engine only keeps the latest; a consumer
 that stores snapshots stores their memory.
