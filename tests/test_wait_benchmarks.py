@@ -19,15 +19,18 @@ from tests.contract.helpers import SUPPORTED_RUNTIME
 
 def test_specs_are_the_preregistered_set() -> None:
     specs = wait.specs()
-    assert len(specs) == 132 and len({s.id for s in specs}) == 132
+    assert len(specs) == 144 and len({s.id for s in specs}) == 144
     per = Counter((s.runtime, s.experiment) for s in specs)
-    assert per == {("A", "M1"): 12, ("A", "M2"): 54, ("B", "M1"): 12, ("B", "M2"): 54}
+    assert per == {("A", "M1"): 12, ("A", "M2"): 54, ("A", "M3"): 6, ("B", "M1"): 12, ("B", "M2"): 54, ("B", "M3"): 6}
     m2 = {(s.width, s.height, s.batch_size, s.interval_ms) for s in specs if s.experiment == "M2"}
     assert m2 == {(w, h, n, i) for w, h in ((346, 260), (640, 480), (1280, 720))
                   for n, i in ((10_000, 0.0), (100_000, 0.0), (100_000, 16.0))}
-    assert {(s.label, s.build, s.waiters) for s in specs} == {
+    assert {(s.label, s.build, s.waiters) for s in specs if s.experiment != "M3"} == {
         ("B", "baseline", 0), ("B'", "baseline", 0), ("F0", "feature", 0),
         ("F1", "feature", 1), ("F4", "feature", 4), ("F8", "feature", 8)}
+    m3 = {(s.label, s.build, s.waiters, s.width, s.height, s.batch_size, s.interval_ms)
+          for s in specs if s.experiment == "M3"}
+    assert m3 == {(f"{kind}{w}", "feature", w, 1280, 720, 100_000, 16.0) for kind in ("WAIT", "POLL") for w in (1, 4, 8)}
 
 
 def test_each_pass_is_a_fixed_permutation() -> None:
@@ -62,6 +65,8 @@ def _records(value: Any) -> dict[str, list[dict[str, Any]]]:
     """Five runs per spec; *value(spec, run)* gives every metric's value."""
     out = {}
     for s in wait.specs():
+        if s.experiment == "M3":
+            continue
         metrics = an.METRICS[s.experiment]
         out[s.id] = [{m: value(s, k) for m in metrics} for k in range(5)]
     return out
@@ -85,7 +90,18 @@ def test_bands_are_the_largest_aa_ratio() -> None:
 
 def test_no_distinguishable_cell_meets_the_criterion() -> None:
     summary = an.analyse(_records(_flat))
-    assert summary["verdict"] == "MET" and summary["compared"] == summary["expected"] == 2 * 9 * 4 + 2 * 2 * 3
+    assert summary["verdict"] == "MET" and summary["compared"] == summary["expected"] == 2 * 9 * 4
+    assert len(summary["w0_m1"]) == 2 * 2 * 3
+
+
+def test_m1_at_no_waiters_is_described_not_judged() -> None:
+    def slower_m1(spec: wait.Spec, k: int) -> float:
+        value = _flat(spec, k)
+        return value * 1.5 if spec.label == "F0" and spec.experiment == "M1" else value
+
+    summary = an.analyse(_records(slower_m1))
+    assert summary["verdict"] == "MET" and not summary["distinguishably_slower"]
+    assert all(r["distinguishable"] and r["direction"] == "slower" for r in summary["w0_m1"])
 
 
 def test_a_slower_cell_fails_and_a_faster_one_is_only_reported() -> None:
@@ -103,11 +119,11 @@ def test_a_slower_cell_fails_and_a_faster_one_is_only_reported() -> None:
 
 def test_a_cell_short_of_runs_leaves_the_criterion_not_established() -> None:
     records = _records(_flat)
-    short = wait.Spec("M1", "A", 346, 260, 1, 0.0, "F0").id
+    short = wait.Spec("M2", "A", 346, 260, 10_000, 0.0, "F0").id
     records[short] = records[short][:4]
     summary = an.analyse(records)
     assert summary["verdict"] == "NOT ESTABLISHED"
-    assert {e["cell"] for e in summary["excluded"]} == {"3.11.14 346x260 1 @ 0 ms"}
+    assert {e["cell"] for e in summary["excluded"]} == {"3.11.14 346x260 10000 @ 0 ms"}
 
 
 def test_characterisation_reports_the_per_waiter_increment() -> None:
@@ -190,4 +206,31 @@ def test_m2_runs_and_checks_itself(batch: int, interval: float) -> None:
     result = wait.measure_m2(wait.Spec("M2", "A", 346, 260, batch, interval, "F8"))
     assert result["checks"]["valid"], result["checks"]
     assert result["registered_at_start"] == 8
+    assert result["waiters_alive"] == [] and result["waiter_errors"] == []
+
+
+def test_m3_table_pairs_waiters_with_pollers() -> None:
+    def run(step: float) -> dict[str, Any]:
+        return {"step_p99_us": step, "busy_ns_per_event": 10.0, "freshness_ms": {"p50": 2.0, "p95": 4.0},
+                "post_step_ms": {"p50": 1.0, "p95": 3.0}}
+
+    records = {wait.Spec("M3", "A", 1280, 720, 100_000, 16.0, "WAIT4").id: [run(100.0 + k) for k in range(5)],
+               wait.Spec("M3", "A", 1280, 720, 100_000, 16.0, "POLL4").id: [run(200.0 + k) for k in range(5)]}
+    rows = {(r["runtime"], r["consumers"], r["metric"]): r for r in an.m3_table(records)}
+    row = rows[("3.11.14", 4, "step_p99_us")]
+    assert row["wait_median"] == 102.0 and row["poll_median"] == 202.0 and row["wait_range"] == [100.0, 104.0]
+    assert row["wait_over_poll"] == pytest.approx(102 / 202)
+    assert rows[("3.11.14", 1, "step_p99_us")]["valid"] == {"wait": 0, "poll": 0}
+
+
+@requires_wait
+@pytest.mark.timeout(120)
+@pytest.mark.parametrize("label", ["WAIT4", "POLL4"])
+def test_m3_runs_and_checks_itself(label: str) -> None:
+    from benchmarks import observation as ob
+
+    short = ob.Condition(warmup_s=0.3, window_s=1.0, pool_events=400_000)
+    result = wait.measure_m3(wait.Spec("M3", "A", 1280, 720, 100_000, 16.0, label), None, short)
+    assert result["checks"] == {"valid": True, "failures": []}
+    assert result["consumer_kind"] == ("wait" if label.startswith("WAIT") else "poll")
     assert result["waiters_alive"] == [] and result["waiter_errors"] == []

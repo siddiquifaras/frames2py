@@ -14,7 +14,7 @@ import json
 import statistics
 import sys
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Final
 
@@ -26,6 +26,17 @@ METRICS: Final = {
 }
 """Per experiment: each preregistered per-run metric and which direction is faster."""
 WAITERS: Final = (1, 4, 8)
+CRITERION: Final = ("M2",)
+"""The experiments the W = 0 criterion applies to (amendment 1). M1 at W = 0 is characterisation."""
+M3_METRICS: Final[dict[str, Callable[[dict[str, Any]], Any]]] = {
+    "step_p99_us": lambda r: r["step_p99_us"],
+    "busy_ns_per_event": lambda r: r["busy_ns_per_event"],
+    "freshness_p50_ms": lambda r: r["freshness_ms"]["p50"],
+    "freshness_p95_ms": lambda r: r["freshness_ms"]["p95"],
+    "post_step_p50_ms": lambda r: r["post_step_ms"]["p50"],
+    "post_step_p95_ms": lambda r: r["post_step_ms"]["p95"],
+}
+"""M3's reported metrics (amendment 2), per run, from the observation study's metric functions."""
 
 
 def valid_records(directory: Path) -> tuple[dict[str, list[dict[str, Any]]], Counter[str]]:
@@ -83,7 +94,8 @@ def analyse(records: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
     def values(experiment: str, cell: tuple[str, int, int, int, float], label: str, metric: str) -> list[float]:
         return [float(r[metric]) for r in records.get(_spec(experiment, cell, label).id, [])]
 
-    summary: dict[str, Any] = {"bands": {}, "w0": [], "excluded": [], "characterisation": [], "valid_runs": {}}
+    summary: dict[str, Any] = {"bands": {}, "w0": [], "w0_m1": [], "excluded": [], "characterisation": [],
+                               "valid_runs": {}}
     for s in specs():
         summary["valid_runs"][s.id] = len(records.get(s.id, []))
     slower: list[dict[str, Any]] = []
@@ -108,18 +120,23 @@ def analyse(records: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
             for metric, direction in metrics.items():
                 band = summary["bands"][f"{experiment} {metric}"]["band"]
                 b, f0 = values(experiment, cell, "B", metric), values(experiment, cell, "F0", metric)
+                criterion = experiment in CRITERION
                 if band is None or len(b) < REPETITIONS or len(f0) < REPETITIONS:
-                    summary["excluded"].append({"experiment": experiment, "cell": name, "metric": metric,
-                                                "valid": {"B": len(b), "F0": len(f0)}, "band": band})
+                    if criterion:
+                        summary["excluded"].append({"experiment": experiment, "cell": name, "metric": metric,
+                                                    "valid": {"B": len(b), "F0": len(f0)}, "band": band})
                     continue
-                compared += 1
                 result = {"experiment": experiment, "cell": name, "metric": metric, "band": band,
                           **compare(f0, b, band)}
                 result["direction"] = ("slower" if is_slower(direction, result["ratio"]) else "faster"
                                        if result["ratio"] != 1 else "equal")
-                summary["w0"].append(result)
-                if result["distinguishable"]:
-                    (slower if result["direction"] == "slower" else faster).append(result)
+                if not criterion:
+                    summary["w0_m1"].append(result)  # described, not judged
+                else:
+                    compared += 1
+                    summary["w0"].append(result)
+                    if result["distinguishable"]:
+                        (slower if result["direction"] == "slower" else faster).append(result)
                 for w in WAITERS:
                     fw = values(experiment, cell, f"F{w}", metric)
                     if len(fw) < REPETITIONS or len(f0) < REPETITIONS:
@@ -130,7 +147,7 @@ def analyse(records: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
                     if experiment == "M1" and metric == "median_ns":
                         row["per_waiter_ns"] = (statistics.median(fw) - statistics.median(f0)) / w
                     summary["characterisation"].append(row)
-    expected = sum(len(METRICS[e]) * len(_cells(e)) for e in METRICS)
+    expected = sum(len(METRICS[e]) * len(_cells(e)) for e in CRITERION)
     if slower:
         verdict = "NOT MET"
     elif compared < expected:
@@ -140,7 +157,30 @@ def analyse(records: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
     summary.update(verdict=verdict, compared=compared, expected=expected, distinguishably_slower=slower,
                    distinguishably_faster=faster)
     summary["diagnostics"] = diagnostics(records)
+    summary["m3"] = m3_table(records)
     return summary
+
+
+def m3_table(records: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    """M3, described: per runtime and consumer count, each metric's median and range for waiters
+    and for pollers, and the ratio of the medians (waiters / pollers)."""
+    rows = []
+    for runtime in RUNTIME_VERSIONS:
+        for w in WAITERS:
+            wait = records.get(Spec("M3", runtime, 1280, 720, 100_000, 16.0, f"WAIT{w}").id, [])
+            poll = records.get(Spec("M3", runtime, 1280, 720, 100_000, 16.0, f"POLL{w}").id, [])
+            for metric, get in M3_METRICS.items():
+                xs = [float(get(r)) for r in wait if get(r) is not None]
+                ys = [float(get(r)) for r in poll if get(r) is not None]
+                rows.append({"runtime": RUNTIME_VERSIONS[runtime], "consumers": w, "metric": metric,
+                             "valid": {"wait": len(wait), "poll": len(poll)},
+                             "wait_median": statistics.median(xs) if xs else None,
+                             "wait_range": [min(xs), max(xs)] if xs else None,
+                             "poll_median": statistics.median(ys) if ys else None,
+                             "poll_range": [min(ys), max(ys)] if ys else None,
+                             "wait_over_poll": (statistics.median(xs) / statistics.median(ys)
+                                                if xs and ys and statistics.median(ys) else None)})
+    return rows
 
 
 def diagnostics(records: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
@@ -184,12 +224,26 @@ def markdown(summary: dict[str, Any], outcomes: Counter[str]) -> str:
     if summary["excluded"]:
         lines += ["", "Excluded (fewer than 5 valid runs or no band):", ""]
         lines += [f"- {e['experiment']} {e['cell']} {e['metric']}: valid {e['valid']}" for e in summary["excluded"]]
+    lines += ["", "## M1 at W = 0: F0 against B (characterisation, not judged; amendment 1)", "",
+              "| cell | metric | F0/B | band | outside band | ranges disjoint |", "|---|---|---|---|---|---|"]
+    for r in summary["w0_m1"]:
+        lines.append(f"| {r['cell']} | {r['metric']} | {r['ratio']:.4f} | {r['band']:.4f} | {r['outside_band']} | "
+                     f"{r['ranges_disjoint']} |")
     lines += ["", "## W >= 1: characterisation (F_W against F0; described, not tested)", "",
               "| experiment | cell | metric | W | F_W/F0 | per waiter (ns) |", "|---|---|---|---|---|---|"]
     for r in summary["characterisation"]:
         per = f"{r['per_waiter_ns']:.0f}" if "per_waiter_ns" in r else ""
         lines.append(f"| {r['experiment']} | {r['cell']} | {r['metric']} | {r['waiters']} | "
                      f"{r['ratio_to_F0']:.4f} | {per} |")
+    lines += ["", "## M3: waiters against pollers, paced (characterisation; amendment 2)", "",
+              "| runtime | W | metric | waiters median [range] | pollers median [range] | waiters/pollers |",
+              "|---|---|---|---|---|---|"]
+    for r in summary["m3"]:
+        def cell(median: Any, span: Any) -> str:
+            return "n/a" if median is None else f"{median:.4g} [{span[0]:.4g}, {span[1]:.4g}]"
+        ratio = "n/a" if r["wait_over_poll"] is None else f"{r['wait_over_poll']:.3f}"
+        lines.append(f"| {r['runtime']} | {r['consumers']} | {r['metric']} | {cell(r['wait_median'], r['wait_range'])} | "
+                     f"{cell(r['poll_median'], r['poll_range'])} | {ratio} |")
     return "\n".join(lines) + "\n"
 
 

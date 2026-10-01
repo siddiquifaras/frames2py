@@ -9,7 +9,8 @@ Code: `benchmarks/wait.py` (definitions and worker), `benchmarks/wait_driver.py`
 
 ## 1. Questions
 
-- **Q0, the criterion (decisions.md 80).** With no waiter, does `wait_for_newer` make the producer slower? The feature
+- **Q0, the criterion (decisions.md 80; scope narrowed to M2 by amendment 1).** With no waiter, does
+  `wait_for_newer` make the producer slower? The feature
   adds, per publication, one `object()` allocation, one `deque.append` and one `deque.popleft` (each in the deque's
   critical section on free-threaded builds), and a loop test. The criterion is met if no preregistered cell is
   distinguishably *slower* with the feature than with the baseline, by section 8. A distinguishably *faster* cell is not
@@ -17,16 +18,19 @@ Code: `benchmarks/wait.py` (definitions and worker), `benchmarks/wait_driver.py`
 - **Q1, characterisation (decisions.md 80: "W = 1, 4, 8: characterisation only").** What does the producer's
   `ingest()` cost with 1, 4 and 8 waiters, at the gate's Engine-level cells (M2), and per publication with exactly W
   waiters registered (M1)? No pass/fail.
+- **Q2, characterisation (amendment 2).** Under the observation study's paced condition, how do consumers that
+  wait with `wait_for_newer` compare with consumers that poll at the cadence, in consumer delay and producer cost
+  (M3)? No pass/fail.
 
 Not asked, and not claimed from this data: throughput on any other machine, workload or runtime; "zero overhead"; any
-consumer-side latency; the comparison with polling (planv1.1.md section 14 docs).
+consumer-side latency beyond M3's conditions.
 
 ## 2. Builds and labels
 
 | build | commit | what it is |
 |---|---|---|
 | baseline | `e63150e1da26d1177d0f7246ab6123d0140d214a` | `v1.1-pre-release` before Phase 1 (= `main`) |
-| feature | `c0b6d9a4df7d87eafb27ea6b791e01b0418f3904` | the commit that adds `wait_for_newer` |
+| feature | `dcc1fa1be826fa1d46234b0f9542a75b01aaf299` | `wait_for_newer` as finished in Phase 1 (amendment 4) |
 
 Each build is a clean git worktree under `scratch/v11_phase1/measure/builds/<build>/`; the worker imports `frames2py`
 from that worktree's `src/` through `PYTHONPATH` and refuses to run if it got anything else (section 7). The harness
@@ -38,6 +42,8 @@ itself (`benchmarks/`) is the measured commit's, identical for every label.
 | B′ (`B'`) | baseline | 0 | A/A control: the baseline again under a second label, interleaved with everything else |
 | F0 | feature | 0 | Q0 |
 | F1, F4, F8 | feature | 1, 4, 8 | Q1 |
+| WAIT1, WAIT4, WAIT8 | feature | 1, 4, 8 waiting consumers | Q2 (M3 only) |
+| POLL1, POLL4, POLL8 | feature | 1, 4, 8 polling consumers | Q2 (M3 only) |
 
 **Waiters.** Each is a thread looping `s = engine.wait_for_newer(seq); seq = s.meta.sequence`, starting with
 `seq = None`, with no timeout and no other work, so it re-registers as soon as it returns. The threads start before
@@ -78,13 +84,28 @@ GC disabled while timing, one `perf_counter_ns` interval per call, and the targe
 9 cells per runtime. At 0 ms every call publishes, which makes the per-publication cost as visible as the gate's grid
 allows; (100k, 16 ms) is a gate cell with occasional publications.
 
-### M1: one publication per call, with exactly W waiters registered (Q0 and Q1)
+### M1: one publication per call, with exactly W waiters registered (Q1; W = 0 described, amendment 1)
 
 `Engine.ingest()` of one in-bounds event at interval 0 on an `event_count` Engine, at 346x260 and 1280x720 (2 cells per
 runtime). 50 warmup calls, then 2,000 timed calls. Before every call, outside the timed interval, the harness spins
 until exactly W waiters are registered, so every publication releases W waiters (for W = 0, it doesn't wait). The run
 checks that every call published, that each waiter returned once per publication, and that the last snapshot holds
 the last call's single event.
+
+### M3: waiters against pollers, paced (Q2; amendment 2)
+
+The observation study's paced condition (`benchmarks/observation_preregistration.md` 11.3, `PREREGISTERED`): 1280x720,
+100k-event batches released on the real clock at 20M events/s, 16 ms publication interval, 5 s warmup, 10 s window,
+on its arm H (an `Engine` with `EventCount`, the public API only). Each consumer renders every state it sees (the
+study's workload W1, `frames2py.viewer.render`).
+- **WAIT_W:** W consumers each looping `wait_for_newer(last, timeout=0.1)`; the timeout only lets the loop notice
+  the run's stop, as publications come every 16 ms.
+- **POLL_W:** W consumers in the study's poll loop: `snapshot()` once per 16 ms on a deadline schedule.
+- W is 1, 4 and 8; the feature build; both runtimes; one cell per (runtime, label).
+- Built from the study's harness pieces (`Source`, its paced producer and consumer loops, `Monitor`), unchanged,
+  and measured with its metric functions (`benchmarks.observation_analysis.producer_metrics`, `consumer_metrics`).
+  The run checks that every observation resolves to a published state, sequences only increase, every consumer
+  observed something, and the Engine accounted for every event fed.
 
 ## 5. Metrics
 
@@ -96,6 +117,8 @@ Per run, from that run's timed calls:
 | M2 | `p50`, `p95`, `p99`: nearest-rank percentiles of the call times | lower |
 | M1 | `median_ns`: median call time | lower |
 | M1 | `p95`, `p99`: nearest-rank percentiles of the call times | lower |
+| M3 | producer step p99 (µs) and busy time per event (ns), from `producer_metrics` | lower |
+| M3 | consumer freshness p50, p95 and post-step observation delay p50, p95 (ms), from `consumer_metrics` | lower |
 
 Also recorded per run, not part of the rule: every call time; waiter returns; the process's `proc_pid_rusage` over the
 timed region (CPU time, P-core CPU time, cycles, instructions); thread counts; the power guard's record; the runtime.
@@ -104,7 +127,8 @@ Per cell and label: the median of the per-run values, with their min and max. Ev
 
 ## 6. Repetitions and order
 
-- 5 passes. A pass runs every (runtime, experiment, cell, label) once: 2 × (2 + 9) × 6 = 132 runs, so 660 runs in all.
+- 5 passes. A pass runs every (runtime, experiment, cell, label) once: 2 × ((2 + 9) × 6 + 6) = 144 runs, so 720
+  runs in all (amendment 2).
 - Within a pass the order is a seeded shuffle (`benchmarks.wait.pass_order`, seed `20261002 * 100 + pass`), so labels,
   cells and runtimes are interleaved and drift spreads across them.
 - One process per run. 2 s idle between runs.
@@ -134,19 +158,22 @@ worker, refusing outside full wake and recording sleep and the end state; `pmset
 end; `pmset -g therm` (wait up to 10 min for a clear state at the start); swap-outs; `ps` every 5 s, flagging any other
 process at or above 10% of a core, or all of them together at or above 25%, in two consecutive samples.
 
-## 8. Analysis rule (Q0)
+## 8. Analysis rule (Q0: M2 only, amendment 1)
 
 This is the observation study's 16.3 rule, as decisions.md 80 (corrected 2026-10-01) applies it. It is not the M3/M3f
 10% rule.
 
 1. **A/A band.** For each experiment and metric: `band = the largest max(r, 1/r)` over the A/A cells, where `r` is the
-   ratio of the medians of B′ and B in that cell. All cells of both runtimes are A/A cells (18 for M2, 4 for M1). No
+   ratio of the medians of B′ and B in that cell. All cells of both runtimes are A/A cells (18 for M2, 4 for M1),
+   pooled across both runtimes as the observation study did (approved, amendment 3). No
    floor is applied. A cell where B or B′ has fewer than 5 valid runs is left out of the band, and the analysis says so.
 2. **Distinguishable.** F0 is distinguishable from B in a cell, on a metric, only if the ratio of their medians lies
    outside `[1/band, band]` **and** their per-run min-max ranges don't overlap. Otherwise they are not distinguishable at
    this measurement's resolution. Results never say "equivalent", "the same" or "no difference".
 3. **Verdict.**
-   - **MET** if every preregistered cell-metric comparison could be made (B and F0 each with 5 valid runs, and a band)
+   - These verdicts are over M2's cell-metric comparisons only. M1's F0 against B is computed the same way and
+     reported as characterisation; it never decides the verdict (amendment 1).
+   - **MET** if every preregistered M2 cell-metric comparison could be made (B and F0 each with 5 valid runs, and a band)
      and none is distinguishably slower: a time metric higher, or `events_per_s` lower.
    - **NOT MET** if any comparison is distinguishably slower.
    - **NOT ESTABLISHED** otherwise: some comparisons could not be made; they are listed.
@@ -155,8 +182,13 @@ This is the observation study's 16.3 rule, as decisions.md 80 (corrected 2026-10
    `.claude/hill-climbing.md` "Paced-mode producer placement"). The feature only adds work, so a speed-up suggests a
    confound.
 5. **Q1** is described, not tested: for each cell, metric and W, the ratio of F_W's median to F0's, with ranges; for
-   M1, also `(median(F_W) - median(F0)) / W` in nanoseconds. No other comparison is tested.
-6. **No outlier removal,** trimming or winsorising. Invalid runs are excluded only by section 9.
+   M1, also `(median(F_W) - median(F0)) / W` in nanoseconds.
+6. **Q2** is described, not tested: per runtime and W, each M3 metric's median and range for WAIT_W and for POLL_W, and
+   the ratio of the medians. It supports one docs claim only: how `wait_for_newer` compared with polling in consumer
+   delay and producer cost under these conditions, on this machine. Consumers that block and consumers that sleep can
+   leave the CPU at different clock speeds (the frequency-scaling lead), and the comparison includes that effect.
+   No other comparison is tested.
+7. **No outlier removal,** trimming or winsorising. Invalid runs are excluded only by section 9.
 
 ## 9. Run outcomes
 
@@ -183,6 +215,11 @@ they are never used. It is kept in `scratch/v11_phase1/measure/validation/`:
   had counted its return from the last publication (8,197 of 8,200 at W = 4). The harness now waits for every waiter
   to register again, which each does only after counting, before it reads the count.
 - `20261001T204422Z`, with that fix: 132 of 132 VALID.
+- `20261001T214906Z`, after amendments 1 to 3 with the feature build at `f8b1b0b`: every one of the 144 specs
+  VALID. Three M2 attempts were INVALID_ENV, because the power guard refused in DarkWake; each was re-queued by the
+  retry rule and passed.
+- `20261001T215849Z`, after amendment 4 (feature build `dcc1fa1`, the measured builds): 144 of 144 VALID, every one
+  at its first attempt.
 
 **Launch** (the operator, after section 7's checklist, from Terminal.app at the repository root):
 
@@ -201,3 +238,22 @@ directory.
 Numbered and dated, each naming what changed and why, committed before any run it affects. In an unattended session only
 a harness defect may be amended (as the observation study's 14.2); anything else stops the session for the user. No
 amendment changes section 8 after the first evidentiary run.
+
+### 11.1 Amendments
+
+All four were made on 2026-10-02, before any evidentiary run: none exists. The harness validation was re-run after
+them (section 10).
+
+1. **The W = 0 criterion applies to the M2 Engine-level cells only, as decisions.md 80 states.** M1 at W = 0 (F0
+   against B) is characterisation: computed by section 8's procedure and reported, but not part of the verdict.
+2. **M3 is added:** the paced comparison of waiters and pollers (section 4, M3; section 8.6), characterisation only.
+   It adds 12 runs per pass.
+3. **Approved by the user as written:** M1's design (1-event batches, 2,000 publications per run, 346x260 and
+   1280x720); per-run percentiles; the A/A band pooled across both runtimes, as the observation study did; the NOT
+   ESTABLISHED verdict; the 2 s gap between runs; NumPy 2.4.6.
+4. **The feature build moves from `c0b6d9a` to `dcc1fa1`.**
+   - It adds two changes: a publication interrupted mid-drain no longer breaks a later one, and `wait_for_newer`'s
+     argument checks change (NumPy integer sequences accepted, bool timeouts refused), plus docstring and type
+     annotation edits.
+   - The W = 0 publication path differs only in the drain loop's body, which runs only when a waiter is registered.
+   - `src/` is identical from `dcc1fa1` to the commit that adds this amendment.

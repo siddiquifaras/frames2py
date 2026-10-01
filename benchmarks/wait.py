@@ -32,15 +32,19 @@ MEASURE_DIR: Final = REPO / "scratch" / "v11_phase1" / "measure"
 
 BUILDS: Final = {
     "baseline": "e63150e1da26d1177d0f7246ab6123d0140d214a",
-    "feature": "c0b6d9a4df7d87eafb27ea6b791e01b0418f3904",
+    "feature": "dcc1fa1be826fa1d46234b0f9542a75b01aaf299",
 }
 """The commit each build is checked out at, in its own worktree under ``MEASURE_DIR/builds``."""
 BUILD_DIRS: Final = {name: MEASURE_DIR / "builds" / name for name in BUILDS}
 
 LABELS: Final = {"B": ("baseline", 0), "B'": ("baseline", 0), "F0": ("feature", 0),
-                 "F1": ("feature", 1), "F4": ("feature", 4), "F8": ("feature", 8)}
-"""label: (build, waiters). B' is the A/A control: the baseline build again, under a second label."""
+                 "F1": ("feature", 1), "F4": ("feature", 4), "F8": ("feature", 8),
+                 "WAIT1": ("feature", 1), "WAIT4": ("feature", 4), "WAIT8": ("feature", 8),
+                 "POLL1": ("feature", 1), "POLL4": ("feature", 4), "POLL8": ("feature", 8)}
+"""label: (build, consumers). B' is the A/A control: the baseline build again, under a second label.
+M1 and M2 use B, B', F0 and F_W (W waiters); M3 uses WAIT_W (W waiters) and POLL_W (W pollers)."""
 LABEL_ORDER: Final = ("B", "B'", "F0", "F1", "F4", "F8")
+M3_LABEL_ORDER: Final = ("WAIT1", "WAIT4", "WAIT8", "POLL1", "POLL4", "POLL8")
 
 RUNTIMES: Final = ("A", "B")
 ENVIRONMENTS: Final = {"A": MEASURE_DIR / "envs" / "py311" / "bin" / "python",
@@ -49,7 +53,7 @@ RUNTIME_VERSIONS: Final = {"A": "3.11.14", "B": "3.14.2"}
 FREE_THREADED: Final = {"A": False, "B": True}
 NUMPY_VERSION: Final = "2.4.6"
 
-EXPERIMENTS: Final = ("M1", "M2")
+EXPERIMENTS: Final = ("M1", "M2", "M3")
 REPETITIONS: Final = 5
 ORDER_SEED: Final = 20261002
 
@@ -59,6 +63,8 @@ M1_PUBLICATIONS: Final = 2_000
 M2_RESOLUTIONS: Final = ((346, 260), (640, 480), (1280, 720))
 M2_CONDITIONS: Final = ((10_000, 0.0), (100_000, 0.0), (100_000, 16.0))
 """(events per call, publication interval in ms)."""
+M3_WAIT_TIMEOUT_S: Final = 0.1
+"""A waiter's timeout in M3, so it notices the run's stop; publications come every 16 ms."""
 
 REGISTRATION_TIMEOUT_S: Final = 10.0
 SHUTDOWN_TIMEOUT_S: Final = 10.0
@@ -111,6 +117,8 @@ def specs() -> list[Spec]:
             for width, height in M2_RESOLUTIONS:
                 for batch_size, interval_ms in M2_CONDITIONS:
                     out.append(Spec("M2", runtime, width, height, batch_size, interval_ms, label))
+        for label in M3_LABEL_ORDER:
+            out.append(Spec("M3", runtime, 1280, 720, 100_000, 16.0, label))
     return out
 
 
@@ -318,6 +326,111 @@ def measure_m1(spec: Spec) -> dict[str, Any]:
     }
 
 
+def measure_m3(spec: Spec, npz: Path | None, condition: Any = None) -> dict[str, Any]:
+    """The observation study's paced condition (its section 11.3) on its arm H, with the label's
+    consumers rendering every state they see (workload W1): waiters in ``wait_for_newer``, or
+    pollers at the cadence. Built from the study's harness pieces; its metric functions measure
+    the run. Writes the raw arrays to *npz*. *condition* replaces the study's only in tests."""
+    import numpy as np
+
+    import frames2py
+    from benchmarks import observation as ob
+    from benchmarks import observation_analysis as an
+
+    class WaitingConsumer(ob.Consumer):
+        """``wait_for_newer(last)`` with a timeout, so the loop notices the run's stop."""
+
+        kind = "wait"
+
+        def __init__(self, ctx: Any, log: Any, engine: Any) -> None:
+            super().__init__(ctx, log)
+            self._wait = engine.wait_for_newer
+            self._last: int | None = None
+            self.timeouts = 0
+
+        def tick(self, timeout: float | None) -> bool:
+            snapshot = self._wait(self._last, timeout=M3_WAIT_TIMEOUT_S)
+            if snapshot is None:
+                self.timeouts += 1
+                return False
+            observed_at = time.perf_counter_ns()
+            meta = snapshot.meta
+            self.log.observe(self.ctx, observed_at, snapshot.frame, meta.watermark, meta.sequence, snapshot)
+            self._last = meta.sequence
+            return True
+
+    condition = condition or ob.PREREGISTERED
+    ctx = ob.Context(condition, ob.make_work("W1", None))
+    engine = frames2py.Engine(condition.sensor_size, frames2py.EventCount(),
+                              snapshot_interval_ms=condition.interval_ms)
+    arm = ob._EngineArm("H", engine)
+    logs = [ob.ConsumerLog(i, True) for i in range(spec.waiters)]
+    waiting = spec.label.startswith("WAIT")
+    arm.consumers = [WaitingConsumer(ctx, log, engine) if waiting else ob.LatestConsumer(ctx, log, arm.snapshot_read)
+                     for log in logs]
+    source = ob.Source(condition)
+    offsets, maxima = source.schedule()
+    producer_log = ob.ProducerLog(len(offsets))
+    ready = threading.Semaphore(0)
+    threads = [threading.Thread(target=ob._consumer_thread, args=(ctx, c, ready), name=f"consumer-{i}", daemon=True)
+               for i, c in enumerate(arm.consumers)]
+    producer = threading.Thread(target=ob._producer, args=(ctx, arm, source, offsets, producer_log, ready,
+                                                           len(threads)), name="producer", daemon=True)
+    monitor = ob.Monitor(ctx)
+    for t in threads:
+        t.start()
+    producer.start()
+    try:
+        monitor.run()
+    except BaseException as exc:  # noqa: BLE001 - recorded like the producer's and consumers'
+        ctx.fail("monitor", exc)
+    ctx.stop.set()
+    deadline = time.monotonic() + SHUTDOWN_TIMEOUT_S
+    for t in [producer, *threads]:
+        t.join(max(0.0, deadline - time.monotonic()))
+    alive = [t.name for t in (producer, *threads) if t.is_alive()]
+    errors = [e["traceback"] for e in ctx.errors]
+    out: dict[str, Any] = {"condition": condition.to_record(), "consumer_kind": "wait" if waiting else "poll",
+                           "consumers": spec.waiters, "waiter_errors": errors, "waiters_alive": alive,
+                           "memory_ceiling": monitor.memory_ceiling}
+    if alive or errors:
+        out["checks"] = {"valid": False, "failures": ["a thread failed or outlived the run"]}
+        return out
+    arrays: dict[str, Any] = {**producer_log.arrays(), "schedule_offset": np.array(offsets, dtype=np.int64),
+                              "m": np.array(maxima, dtype=np.int64), **monitor.arrays()}
+    for log in logs:
+        for key, value in log.arrays().items():
+            arrays[f"c{log.index}_{key}"] = value
+    if npz is not None:
+        np.savez(npz, **arrays)
+    record = {"request": {"arm": "H", "condition": condition.to_record()}, "t0": ctx.t0, "t1": ctx.t1,
+              "t_start": ctx.t_start, "batches": producer_log.count, "consumers": len(logs), "queues": [],
+              "memory_ceiling": monitor.memory_ceiling}
+    prod = an.producer_metrics(record, arrays)
+    cons = an.consumer_metrics(record, arrays, prod)
+    failures = []
+    stats = engine.stats
+    if stats.events_ingested != arm.ingested_events or stats.events_out_of_bounds:
+        failures.append(f"events_ingested {stats.events_ingested}, fed {arm.ingested_events}")
+    find = ob.resolver(arrays["m"].tolist(), arrays["producer_s"][:producer_log.count].tolist())
+    for log in logs:
+        if any(b <= a for a, b in zip(log.seq, log.seq[1:])):
+            failures.append(f"consumer {log.index}: sequences not strictly increasing")
+        if any(find(int(wm), int(o)) is None for wm, o in zip(log.wm, log.o)):
+            failures.append(f"consumer {log.index}: an observation that matches no published state")
+    if not logs or not all(log.observations for log in logs):
+        failures.append("a consumer observed nothing")
+    keep = ("sustained", "achieved_rate", "offered_rate", "step_us", "step_p99_us", "busy_ns_per_event",
+            "busy_fraction", "producer_cpu_cores", "off_cpu_ms_per_s", "publication_rate", "lag_ms")
+    out.update({k: prod[k] for k in keep})
+    out.update({k: cons[k] for k in ("freshness_ms", "post_step_ms", "end_to_end_ms", "processing_ms",
+                                     "observation_rate", "coverage", "skipped", "consumer_cpu_total_cores")})
+    out["waiter_timeouts"] = sum(getattr(c, "timeouts", 0) for c in arm.consumers)
+    out["batches"] = producer_log.count
+    out["checks"] = {"valid": not failures, "failures": failures}
+    return out
+
+
 def _refusals(spec: Spec) -> list[str]:
     import numpy as np
 
@@ -360,8 +473,10 @@ def run(request: dict[str, Any]) -> dict[str, Any]:
         else:
             try:
                 with power.hold_awake(f"frames2py wait_for_newer {request['run_id']}") as awake:
-                    measure = measure_m1 if spec.experiment == "M1" else measure_m2
-                    record["result"] = measure(spec)
+                    if spec.experiment == "M3":
+                        record["result"] = measure_m3(spec, Path(request["out_dir"]) / f"{request['run_id']}.npz")
+                    else:
+                        record["result"] = (measure_m1 if spec.experiment == "M1" else measure_m2)(spec)
                 record["power"] = awake
             except power.PowerStateError as error:
                 record["power_refused"] = str(error)
