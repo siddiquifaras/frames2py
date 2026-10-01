@@ -5,6 +5,7 @@ from __future__ import annotations
 import collections
 import math
 import numbers
+import operator
 import sys
 import threading
 import time
@@ -26,17 +27,23 @@ def _sequence_floor(sequence: object) -> int:
     """The sequence a snapshot must exceed to be newer: *sequence*, or -1 for ``None``."""
     if sequence is None:
         return -1
-    if isinstance(sequence, bool) or not isinstance(sequence, int):
-        raise TypeError(f"sequence must be an int or None, got {type(sequence).__name__}")
-    if sequence < 0:
-        raise ValueError(f"sequence must be >= 0, got {sequence}")
-    return sequence
+    if isinstance(sequence, bool):
+        raise TypeError("sequence must be an int or None, got a bool")
+    try:
+        floor = operator.index(sequence)
+    except TypeError:
+        raise TypeError(f"sequence must be an int or None, got {type(sequence).__name__}") from None
+    if floor < 0:
+        raise ValueError(f"sequence must be >= 0, got {floor}")
+    return floor
 
 
 def _deadline(timeout: object) -> float | None:
     """The monotonic deadline for *timeout* seconds, or ``None`` for no limit."""
     if timeout is None:
         return None
+    if isinstance(timeout, bool):
+        raise TypeError("timeout must be a real number or None, got a bool")
     if not isinstance(timeout, numbers.Real):
         raise TypeError(f"timeout must be a real number or None, got {type(timeout).__name__}")
     if timeout != timeout:
@@ -165,8 +172,9 @@ class Engine:
         never waits for a waiter.
 
         Raises:
-            TypeError: *sequence* is not an int or ``None`` (a bool is refused), or *timeout*
-                is not a real number or ``None``.
+            TypeError: *sequence* is not an integer (an ``int`` or another type with
+                ``__index__``, such as a NumPy integer) or ``None``, or *timeout* is not a real
+                number or ``None``. A bool is refused for either.
             ValueError: *sequence* is negative, or *timeout* is negative or NaN.
             RuntimeError: called on the producer's thread, which can't publish while it waits.
         """

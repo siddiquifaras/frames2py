@@ -114,15 +114,23 @@ def engine(interval_ms: float = 0.0, kernel: str = "event_count") -> Any:
 
 
 class TestArguments:
-    @pytest.mark.parametrize("sequence", [True, False, 1.0, "1", np.int64(1), [1]],
-                             ids=["True", "False", "1.0", "'1'", "np.int64", "list"])
-    def test_sequence_must_be_an_int_or_none(self, sequence: Any) -> None:
+    @pytest.mark.parametrize("sequence", [True, False, np.True_, 1.0, np.float64(1.0), "1", [1]],
+                             ids=["True", "False", "np.True_", "1.0", "np.float64", "'1'", "list"])
+    def test_sequence_must_be_an_integer_or_none(self, sequence: Any) -> None:
         with pytest.raises(TypeError):
             engine().wait_for_newer(sequence, timeout=0)
 
-    def test_a_negative_sequence_is_refused(self) -> None:
+    @pytest.mark.parametrize("sequence", [np.int64(0), np.uint8(0), np.int32(0)], ids=["int64", "uint8", "int32"])
+    def test_numpy_integer_sequences_are_accepted(self, producer: ProducerThread, sequence: Any) -> None:
+        e = engine()
+        snapshot = published(e, producer, 1)
+        assert e.wait_for_newer(sequence, timeout=0) is snapshot
+        assert e.wait_for_newer(np.int64(snapshot.meta.sequence), timeout=0) is None
+
+    @pytest.mark.parametrize("sequence", [-1, np.int64(-1)], ids=["-1", "np.int64(-1)"])
+    def test_a_negative_sequence_is_refused(self, sequence: Any) -> None:
         with pytest.raises(ValueError):
-            engine().wait_for_newer(-1, timeout=0)
+            engine().wait_for_newer(sequence, timeout=0)
 
     @pytest.mark.parametrize("timeout", [-1, -0.5, -math.inf, math.nan],
                              ids=["-1", "-0.5", "-inf", "nan"])
@@ -130,8 +138,8 @@ class TestArguments:
         with pytest.raises(ValueError):
             engine().wait_for_newer(None, timeout=timeout)
 
-    @pytest.mark.parametrize("timeout", ["1", 1j, decimal.Decimal("0.1"), [0]],
-                             ids=["'1'", "1j", "Decimal", "list"])
+    @pytest.mark.parametrize("timeout", [True, False, np.True_, "1", 1j, decimal.Decimal("0.1"), [0]],
+                             ids=["True", "False", "np.True_", "'1'", "1j", "Decimal", "list"])
     def test_a_non_real_timeout_is_refused(self, timeout: Any) -> None:
         with pytest.raises(TypeError):
             engine().wait_for_newer(None, timeout=timeout)

@@ -95,7 +95,8 @@ complete producer and consumer.
 `sequence` is published, then returns the latest one:
 
 - **Newer** means `snapshot.meta.sequence > sequence`. `None` accepts any publication.
-  `sequence` must be an `int` (not a bool) or `None`, and not negative.
+  `sequence` must be an integer (an `int`, or a NumPy integer) or `None`, and not negative;
+  a bool raises `TypeError`.
 - **The latest, not the next.** If a newer snapshot is already published, the call returns
   it at once. Otherwise it returns the snapshot published when it reads after a
   publication, which needn't be `sequence + 1`: a slow consumer skips publications here
@@ -103,7 +104,7 @@ complete producer and consumer.
 - **`timeout`** is in seconds on the monotonic clock: `None` or `math.inf` waits without
   limit, `0` checks once without blocking. On timeout the call returns `None`, and only if
   nothing newer is published when it checks after the timeout has elapsed. Negative or NaN
-  raises `ValueError`; a non-number raises `TypeError`.
+  raises `ValueError`; a bool or a non-number raises `TypeError`.
 - **`stop()` and `reset()` wake nobody.** The publication `stop()` makes for a pending
   window wakes waiters like any other. After `reset()`, a waiter returns the first
   publication after it, whose sequence is higher than any before the reset; a reset that
