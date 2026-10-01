@@ -277,16 +277,32 @@ class _NoWindow:
         self.presents += 1
 
 
+def _impact_stream(batch_size: int, count: int) -> Callable[[int], Any]:
+    """Batch k of the viewer-impact stream: the 1280x720 uniform gate stream, from a pool of at
+    most 64 batches reused with their timestamps moved on by the pool's event-time span at each
+    wrap, so event time never goes backwards."""
+    from benchmarks.workloads import Workload
+
+    workload = Workload("uniform", (1280, 720), batch_size, seed=3)
+    pool = workload.batches(min(count, 64))
+    span_us = len(pool) * batch_size * 1_000_000 // workload.event_rate_hz
+
+    def batch(k: int) -> Any:
+        out = pool[k % len(pool)].copy()
+        out["t"] += np.uint64((k // len(pool)) * span_us)
+        return out
+
+    return batch
+
+
 def _impact_arm(kernel: str, batch_size: int, with_viewer: bool) -> dict[str, Any]:
     import frames2py
-    from benchmarks.workloads import Workload
     from frames2py.viewer import _run, render
 
     size = (1280, 720)
     period_ns = batch_size * 1_000_000_000 // IMPACT_RATE
     count = math.ceil((IMPACT_WARMUP_S + IMPACT_WINDOW_S) * IMPACT_RATE / batch_size)
-    pool = Workload("uniform", size, batch_size, seed=3).batches(min(count, 64))
-    stride = batch_size * 1_000_000 // IMPACT_RATE  # µs of event time per batch
+    stream = _impact_stream(batch_size, count)
     engine = frames2py.Engine(size, _kernel(kernel), snapshot_interval_ms=16.0)
     stop = threading.Event()
     warmup = int(IMPACT_WARMUP_S * IMPACT_RATE / batch_size)
@@ -300,8 +316,7 @@ def _impact_arm(kernel: str, batch_size: int, with_viewer: bool) -> dict[str, An
         try:
             start = time.perf_counter_ns()
             for k in range(count):
-                batch = pool[k % len(pool)].copy()
-                batch["t"] += np.uint64((k // len(pool)) * len(pool) * stride)
+                batch = stream(k)
                 due = start + (k + 1) * period_ns
                 while (now := time.perf_counter_ns()) < due:
                     time.sleep(min((due - now) / 1e9, 0.001))

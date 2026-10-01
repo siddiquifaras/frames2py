@@ -195,6 +195,19 @@ class TestWorkers:
             assert record["arms"][arm]["timed_batches"] == timed and record["arms"][arm]["errors"] == []
         assert record["arms"]["none"]["viewer_renders"] == 0
 
+    def test_the_impact_stream_keeps_the_gate_streams_timestamps_across_pool_wraps(self) -> None:
+        from benchmarks.workloads import Workload
+
+        count = 2 * 64 + 1  # two pool wraps
+        stream = consumers._impact_stream(500, count)
+        gate = Workload("uniform", (1280, 720), 500, seed=3).batches(count)
+        previous = -1
+        for k in range(count):
+            t = stream(k)["t"]
+            assert np.array_equal(t, gate[k]["t"]), k
+            assert int(t.min()) >= previous, k
+            previous = int(t.max())
+
     def test_replay_due_times_are_an_independent_recomputation_of_paced(self) -> None:
         batches = [np.zeros(0, dtype=EVENT_DTYPE), events(40, 1)]
         tail = events(30, 2)
