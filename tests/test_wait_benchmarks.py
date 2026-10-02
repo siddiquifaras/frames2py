@@ -234,3 +234,19 @@ def test_m3_runs_and_checks_itself(label: str) -> None:
     assert result["checks"] == {"valid": True, "failures": []}
     assert result["consumer_kind"] == ("wait" if label.startswith("WAIT") else "poll")
     assert result["waiters_alive"] == [] and result["waiter_errors"] == []
+
+
+def test_the_driver_does_not_flag_its_own_caffeinate_wrapper() -> None:
+    # The tree `caffeinate -dimsu uv run ... -m benchmarks.wait_driver` makes on macOS: uv (100) runs the
+    # driver (102) and caffeinate (101) as its children. Another benchmark under its own caffeinate is flagged.
+    ps = "\n".join([
+        "  90     1 -zsh",
+        " 100    90 uv run --no-sync python -m benchmarks.wait_driver campaign --unattended",
+        " 101   100 caffeinate -dimsu uv run --no-sync python -m benchmarks.wait_driver campaign --unattended",
+        " 102   100 /repo/.venv/bin/python -m benchmarks.wait_driver campaign --unattended",
+        " 103   102 /repo/env/bin/python -m benchmarks.wait worker",
+        " 200     1 caffeinate -i python -m benchmarks run --suite gate",
+        " 201   200 python -m benchmarks run --suite gate",
+    ])
+    assert drv.other_benchmarks(102, ps) == ["200 caffeinate -i python -m benchmarks run --suite gate",
+                                              "201 python -m benchmarks run --suite gate"]

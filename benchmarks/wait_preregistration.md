@@ -267,3 +267,19 @@ Wording only. No parameter, rule or cell changes.
 1. **2026-10-02, amendment 1.** It first said the M2-only criterion held "as decisions.md 80 states". 80's original text
    covered every preregistered Engine-level cell, which includes M1. The narrowing to M2 is the user's amendment to 80
    of 2026-10-02. Amendment 1 now says so.
+
+### 11.3 Deviations
+
+1. **2026-10-02, the launch (section 10).**
+   - **What happened:** the first session (`20261002T133212Z-b47571`) refused at its start. The session check flagged
+     the driver's own `caffeinate -dimsu` wrapper (pid 5438) as "another benchmark process".
+   - **Why:** `caffeinate -dimsu <command>` execs the command in its own process and continues as that process's
+     child. The wrapper is therefore the driver's sibling, not its ancestor, and its arguments match `-m benchmarks`.
+   - **How the operator launched instead:** `nohup uv run --no-sync python -m benchmarks.wait_driver campaign
+     --unattended ... &`, followed by `caffeinate -dimsu -w <driver pid> &`. The driver then ran as session
+     `20261002T133420Z-4b405b`, from 13:34:20 to 14:55:39 UTC.
+   - **Effect, as reported by the operator:** the same `caffeinate` assertions, held from a few seconds after the
+     driver started until it exited. The power guard (`hold_awake()`) still ran around every run.
+   - **Not verified from the records:** when the separate `caffeinate` started.
+   - **Fix:** the driver's check now passes a `caffeinate` whose parent is in the driver's own lineage
+     (`benchmarks.wait_driver.other_benchmarks`). Section 10's command works as written from that fix on.

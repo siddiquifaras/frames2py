@@ -21,6 +21,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -93,13 +94,37 @@ def repository_problems(state: dict[str, Any]) -> list[str]:
     return problems
 
 
+def other_benchmarks(pid: int, ps_text: str | None = None) -> list[str]:
+    """Other ``python -m benchmarks`` processes, outside the driver's own lineage
+    (``observation_driver.lineage``). A ``caffeinate`` whose parent is in that lineage is the
+    driver's own wrapper, not another benchmark: ``caffeinate -dimsu <command>`` execs the command
+    in its own process and continues as that process's child, so it is the driver's sibling."""
+    text = ps_text if ps_text is not None else od._run("ps", "-A", "-o", "pid=,ppid=,args=")[1]
+    parents: dict[int, int] = {}
+    rows = []
+    for line in text.splitlines():
+        parts = line.split(None, 2)
+        if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit():
+            parents[int(parts[0])] = int(parts[1])
+            rows.append((int(parts[0]), parts[2]))
+    own = od.lineage(pid, parents)
+    found = []
+    for p, args in rows:
+        if p in own or not re.search(r"-m\s+benchmarks\b", args):
+            continue
+        if os.path.basename(args.split()[0]) == "caffeinate" and parents.get(p) in own:
+            continue
+        found.append(f"{p} {args}")
+    return found
+
+
 def session_checks(unattended: bool, gate_env: bool) -> tuple[dict[str, Any], list[str]]:
     record = od.session_record(unattended)
     repo = repository_state()
     machine = od.machine_state(MEASURE_DIR)
     procs = od.parse_ps(od._run("ps", "-A", "-o", "pid=,ppid=,pcpu=,rss=,comm=")[1])
     docker_code, _ = od._run("docker", "info", timeout=15.0)
-    others = od.other_benchmarks(os.getpid())
+    others = other_benchmarks(os.getpid())
     gating = repository_problems(repo) + od.machine_problems(machine, procs, docker_code, others)
     missing = [f"runtime {runtime}: no environment at {python}" for runtime, python in ENVIRONMENTS.items()
                if not python.exists()]
