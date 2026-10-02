@@ -196,7 +196,7 @@ This is the observation study's 16.3 rule, as decisions.md 80 (corrected 2026-10
 |---|---|---|
 | VALID | every check passed | used |
 | REFUSED | wrong Python, NumPy, GIL state or build; an unclean tree or build at a run's start | the session stops; nothing measured |
-| INVALID_ENV | the power guard refused or recorded sleep or a non-full-wake end; not on AC, or Low Power Mode on, at start or end; a thermal warning at the end; swap-outs; competing load | re-queued at the end of its pass, at most 2 retries; every attempt kept |
+| INVALID_ENV | the power guard refused or recorded sleep or a non-full-wake end; not on AC, or Low Power Mode on, at start or end; a thermal warning at the end; swap-outs; competing load | re-queued at the end of its pass, at most 2 retries; every attempt kept. AC missing when a run is about to start is not an attempt: the driver waits for it (amendment 6) |
 | INVALID_INTEGRITY | the target's result checks failed; a waiter raised | the session stops for review; reported whatever the cause |
 | HARNESS_FAILURE | an exception in the harness; a worker with no result | the session stops; the harness is fixed by an amendment, and the affected pass is re-run whole |
 | SHUTDOWN_TIMEOUT | waiters still alive 10 s after shutdown | the session stops for review |
@@ -221,17 +221,19 @@ they are never used. It is kept in `scratch/v11_phase1/measure/validation/`:
 - `20261001T215849Z`, after amendment 4 (feature build `dcc1fa1`, the measured builds): 144 of 144 VALID, every one
   at its first attempt.
 
-**Launch** (the operator, after section 7's checklist, from Terminal.app at the repository root):
+**Launch** (the operator, after section 7's checklist, from Terminal.app at the repository root). Revision 1's
+directory (amendment 5):
 
 ```sh
-mkdir -p scratch/v11_phase1/measure/campaign
+uv run --no-sync python -m benchmarks.wait_driver check     # optional: the session checks alone; writes nothing
+mkdir -p scratch/v11_phase1/measure/campaign-r1
 nohup caffeinate -dimsu uv run --no-sync python -m benchmarks.wait_driver campaign --unattended \
-    > scratch/v11_phase1/measure/campaign/driver.log 2>&1 &
-tail -f scratch/v11_phase1/measure/campaign/progress.log
+    > scratch/v11_phase1/measure/campaign-r1/driver.log 2>&1 &
+tail -f scratch/v11_phase1/measure/campaign-r1/progress.log
 ```
 
-Then `uv run --no-sync python -m benchmarks.wait_analysis` writes `summary.md` and `summary.json` in the campaign
-directory.
+Then `uv run --no-sync python -m benchmarks.wait_analysis` writes `summary.md` and `summary.json` in
+`campaign-r1/`. A session stopped by amendment 6 resumes with the same `campaign` command.
 
 ## 11. Amendments
 
@@ -241,8 +243,8 @@ amendment changes section 8 after the first evidentiary run.
 
 ### 11.1 Amendments
 
-All four were made on 2026-10-02, before any evidentiary run: none exists. The harness validation was re-run after
-them (section 10).
+Amendments 1 to 4 were made on 2026-10-02, before any evidentiary run: none existed then. The harness validation was
+re-run after them (section 10). Amendments 5 and 6 were made after revision 0's data and before any revision 1 data.
 
 1. **The W = 0 criterion applies to the M2 Engine-level cells only.** The user narrowed it to M2 by the amendment to
    decisions.md 80 of 2026-10-02; 80's original text covered every preregistered Engine-level cell. M1 at W = 0 (F0
@@ -259,6 +261,24 @@ them (section 10).
      annotation edits.
    - The W = 0 publication path differs only in the drain loop's body, which runs only when a waiter is registered.
    - `src/` is identical from `dcc1fa1` to the commit that adds this amendment.
+
+5. **2026-10-02: the campaign is re-run whole as revision 1** (the user's decision; option C).
+   - **Why:** revision 0 (session `20261002T133420Z-4b405b`, 13:34:20 to 14:55:39 UTC) lost AC power at 13:57:45.
+     Every later attempt was INVALID_ENV for "not on AC power", so 401 of 720 slots were VALID and no cell had its 5
+     valid runs.
+   - **What is kept:** revision 0's 1,358 attempts stay in `scratch/v11_phase1/measure/campaign/` as recorded. They are
+     superseded and are not used in the analysis.
+   - **What runs:** revision 1 runs all 5 passes, in their preregistered seeded orders, in one new session in
+     `scratch/v11_phase1/measure/campaign-r1/`. Every run of the analysis then shares a session, as decisions.md 80's
+     same-session A/A control requires.
+   - **Unchanged:** builds, labels, cells, metrics, repetitions, the retry rule and section 8.
+6. **2026-10-02: AC power missing at a run's start check pauses the session instead of using up retries.**
+   - Before each run the driver reads `pmset -g batt`. Without AC it polls every 30 s, for up to 30 min.
+   - If AC returns, the run starts, and the wait is recorded with it (`ac_wait`: seconds waited and the reason).
+   - If AC doesn't return within 30 min, the session stops cleanly with that reason, without making the attempt. The
+     same `campaign` command resumes it at that run.
+   - A run whose end check finds battery power is still INVALID_ENV and is retried as before (section 9).
+   - The thermal wait (section 7) is unchanged.
 
 ### 11.2 Listed corrections
 

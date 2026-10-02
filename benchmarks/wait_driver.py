@@ -10,7 +10,13 @@ written after every run, an interrupted pass resumes from its last completed run
 session ends with a summary.
 
     uv run python -m benchmarks.wait_driver campaign      # the evidentiary measurement
+    uv run python -m benchmarks.wait_driver check         # the session checks alone; writes nothing
     uv run python -m benchmarks.wait_driver validate      # harness check, never evidence
+
+The campaign runs in revision 1's directory (``CAMPAIGN_DIR``). Revision 0, the first session, is kept untouched in
+``SUPERSEDED_DIRS`` and is not used by the analysis (preregistration amendment 5). If AC power is missing when a run
+is about to start, the driver waits for it, up to ``AC_WAIT_S``, and stops the session cleanly, without an attempt,
+if it doesn't return (amendment 6).
 
 The machine checks are the observation study's (``benchmarks/observation_driver.py``).
 """
@@ -26,7 +32,7 @@ import subprocess
 import sys
 import time
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Final
 
@@ -44,7 +50,13 @@ from benchmarks.wait import (
     sha256,
 )
 
-CAMPAIGN_DIR: Final = MEASURE_DIR / "campaign"
+CAMPAIGN_REVISION: Final = 1
+CAMPAIGN_DIR: Final = MEASURE_DIR / "campaign-r1"
+"""Revision 1: all five passes in one new session (amendment 5)."""
+SUPERSEDED_DIRS: Final = (MEASURE_DIR / "campaign",)
+"""Revision 0 (session 20261002T133420Z-4b405b): kept as recorded, superseded, not analysed."""
+AC_WAIT_S: Final = 1800.0
+AC_POLL_S: Final = 30.0
 VALIDATION_DIR: Final = MEASURE_DIR / "validation"
 MAX_ATTEMPTS: Final = 3
 IDLE_GAP_S: Final = 2.0
@@ -219,6 +231,19 @@ def attempt(spec: Spec, *, pass_index: int, attempt_index: int, session: str, ou
     return entry
 
 
+def wait_ac(read: Callable[[], dict[str, Any]] = od.power, sleep: Callable[[float], None] = time.sleep,
+            wait_s: float = AC_WAIT_S, poll_s: float = AC_POLL_S) -> tuple[dict[str, Any], float]:
+    """Wait up to *wait_s*, polling every *poll_s*, for AC power. Returns the last power state read and the
+    seconds waited (amendment 6)."""
+    state = read()
+    waited = 0.0
+    while not state.get("ac") and waited < wait_s:
+        sleep(poll_s)
+        waited += poll_s
+        state = read()
+    return state, waited
+
+
 def pass_plan(pass_index: int, entries: Sequence[dict[str, Any]]) -> tuple[list[Spec], dict[str, int]]:
     """The specs still to do in a pass, in order, and the attempts made so far per spec: specs
     never attempted first, in the seeded order; then those whose last attempt was INVALID_ENV
@@ -255,10 +280,22 @@ def campaign(passes: Sequence[int], *, directory: Path = CAMPAIGN_DIR, unattende
         todo, attempts = pass_plan(pass_index, ledger.entries())
         total = len(pass_order(pass_index))
         while todo:
-            spec = todo.pop(0)
+            spec = todo[0]
+            ac_state, ac_waited = wait_ac() if gate_env else ({"ac": True}, 0.0)
+            if not ac_state.get("ac"):
+                stopped = (f"AC power not restored within {AC_WAIT_S:g} s before {spec.id} (pass {pass_index}); "
+                           f"no attempt made: resume with the same command")
+                od.write_progress(directory, session, {"line": f"paused, then stopped: {stopped}", "pass": pass_index,
+                                                       "counts": dict(counts), "power": ac_state})
+                break
+            todo.pop(0)
             n = attempts.get(spec.id, 0) + 1
             entry = attempt(spec, pass_index=pass_index, attempt_index=n, session=session, out_dir=directory,
                             gate_env=gate_env)
+            entry["revision"] = CAMPAIGN_REVISION
+            if ac_waited:
+                entry["ac_wait"] = {"waited_s": ac_waited,
+                                    "reason": "AC power missing at the start check; waited for it to return"}
             ledger.append(entry)
             attempts[spec.id] = n
             counts[entry["outcome"]] += 1
@@ -291,11 +328,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--pass", dest="passes", type=int, action="append",
                      help=f"repeatable; default all of 1..{REPETITIONS}")
     run.add_argument("--unattended", action="store_true")
-    check = sub.add_parser("validate", help="exercise the harness once per spec; never evidence")
-    check.add_argument("--pass", dest="passes", type=int, action="append", help="default 1")
+    sub.add_parser("check", help="run the session checks alone and print them; writes nothing")
+    validate = sub.add_parser("validate", help="exercise the harness once per spec; never evidence")
+    validate.add_argument("--pass", dest="passes", type=int, action="append", help="default 1")
     args = parser.parse_args(argv)
     if args.command == "campaign":
         return campaign(args.passes or list(range(1, REPETITIONS + 1)), unattended=args.unattended)
+    if args.command == "check":
+        _, problems = session_checks(unattended=True, gate_env=True)
+        print(json.dumps({"driver_pid": os.getpid(), "other_benchmarks": other_benchmarks(os.getpid()),
+                          "problems": problems}, indent=1))
+        return 0 if not problems else 3
     stamp = f"{datetime.datetime.now(datetime.UTC):%Y%m%dT%H%M%SZ}"
     return campaign(args.passes or [1], directory=VALIDATION_DIR / stamp, gate_env=False)
 

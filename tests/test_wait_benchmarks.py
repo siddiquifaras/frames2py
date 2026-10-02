@@ -6,6 +6,7 @@ measurement.
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from typing import Any
 
@@ -250,3 +251,84 @@ def test_the_driver_does_not_flag_its_own_caffeinate_wrapper() -> None:
     ])
     assert drv.other_benchmarks(102, ps) == ["200 caffeinate -i python -m benchmarks run --suite gate",
                                               "201 python -m benchmarks run --suite gate"]
+
+
+# ------------------------------------------------------------------ AC pause and revision 1 (amendments 5 and 6)
+
+
+def _power(*ac: bool) -> Any:
+    states = iter(ac)
+    return lambda: {"ac": next(states), "source": "AC Power"}
+
+
+def test_ac_present_means_no_wait() -> None:
+    slept: list[float] = []
+    state, waited = drv.wait_ac(_power(True), slept.append, wait_s=90, poll_s=30)
+    assert state["ac"] and waited == 0 and slept == []
+
+
+def test_ac_lost_then_returned_waits_until_it_is_back() -> None:
+    slept: list[float] = []
+    state, waited = drv.wait_ac(_power(False, False, False, True), slept.append, wait_s=1800, poll_s=30)
+    assert state["ac"] and waited == 90 and slept == [30, 30, 30]
+
+
+def test_ac_that_never_returns_ends_the_wait_at_its_bound() -> None:
+    slept: list[float] = []
+    state, waited = drv.wait_ac(lambda: {"ac": False}, slept.append, wait_s=90, poll_s=30)
+    assert not state["ac"] and waited == 90 and slept == [30, 30, 30]
+
+
+def _fake_campaign(monkeypatch: pytest.MonkeyPatch, ac: Any) -> list[str]:
+    """Run campaign() with no workers: *ac()* gives each start check's (state, waited)."""
+    made: list[str] = []
+
+    def attempt(spec: wait.Spec, *, pass_index: int, attempt_index: int, session: str, out_dir: Any,
+                gate_env: bool) -> dict[str, Any]:
+        made.append(spec.id)
+        return {"run_id": f"{spec.id}_p{pass_index}_a{attempt_index}", "spec": spec.to_record(), "pass": pass_index,
+                "attempt": attempt_index, "session": session, "outcome": "VALID", "reasons": [], "ended_at": "t"}
+
+    monkeypatch.setattr(drv, "session_checks", lambda unattended, gate_env: ({"session": "s"}, []))
+    monkeypatch.setattr(drv, "attempt", attempt)
+    monkeypatch.setattr(drv, "wait_ac", ac)
+    monkeypatch.setattr(drv, "IDLE_GAP_S", 0.0)
+    return made
+
+
+def test_a_session_stops_cleanly_when_ac_does_not_return_and_resumes_where_it_stopped(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = iter([({"ac": True}, 0.0)] * 10 + [({"ac": False}, drv.AC_WAIT_S)])
+    first = _fake_campaign(monkeypatch, lambda: next(calls))
+    assert drv.campaign([1], directory=tmp_path) == 4
+    entries = [json.loads(line) for line in (tmp_path / "attempts.jsonl").read_text().splitlines()]
+    order = wait.pass_order(1)
+    assert [e["spec"] for e in entries] == [s.to_record() for s in order[:10]] and len(first) == 10
+    assert "AC power not restored" in (tmp_path / "progress.json").read_text()
+
+    second = _fake_campaign(monkeypatch, lambda: ({"ac": True}, 0.0))
+    assert drv.campaign([1], directory=tmp_path) == 0
+    assert second == [s.id for s in order[10:]]
+    entries = [json.loads(line) for line in (tmp_path / "attempts.jsonl").read_text().splitlines()]
+    assert len(entries) == 144 and all(e["attempt"] == 1 and e["revision"] == 1 for e in entries)
+
+
+def test_a_wait_for_ac_is_recorded_with_the_run_it_delayed(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = iter([({"ac": True}, 120.0)] + [({"ac": True}, 0.0)] * 143)
+    _fake_campaign(monkeypatch, lambda: next(calls))
+    assert drv.campaign([1], directory=tmp_path) == 0
+    entries = [json.loads(line) for line in (tmp_path / "attempts.jsonl").read_text().splitlines()]
+    assert entries[0]["ac_wait"]["waited_s"] == 120.0 and all("ac_wait" not in e for e in entries[1:])
+
+
+def test_a_campaign_leaves_another_revision_untouched(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    old, new = tmp_path / "campaign", tmp_path / "campaign-r1"
+    old.mkdir()
+    (old / "attempts.jsonl").write_text('{"run_id": "x"}\n')
+    (old / "progress.log").write_text("old\n")
+    before = {p.name: p.read_bytes() for p in old.iterdir()}
+    _fake_campaign(monkeypatch, lambda: ({"ac": True}, 0.0))
+    assert drv.campaign([1], directory=new) == 0
+    assert {p.name: p.read_bytes() for p in old.iterdir()} == before
+    assert drv.CAMPAIGN_DIR != drv.SUPERSEDED_DIRS[0]
