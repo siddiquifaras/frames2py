@@ -118,22 +118,26 @@ class ReferenceAccumulator:
         if self.kernel in WINDOWED:
             self._window_start = len(self._log)
 
-    def read(self) -> NDArray[Any]:
-        """The observable output: its shape and dtype are part of the contract."""
+    def read(self, at: int | None = None) -> NDArray[Any]:
+        """The observable output: its shape and dtype are part of the contract.
+
+        ``at`` evaluates the representation at that time instead of the watermark; only
+        ``timestamp_decay`` depends on it.
+        """
         if self.kernel == "event_count":
             return self._read_event_count()
         if self.kernel == "polarity":
             return self._read_polarity()
         if self.kernel == "time_surface":
             return self._read_time_surface()
-        return self.read_exact().astype(np.float32)
+        return self.read_exact(at).astype(np.float32)
 
-    def read_exact(self) -> NDArray[np.float64]:
+    def read_exact(self, at: int | None = None) -> NDArray[np.float64]:
         """Decay kernels only: the float64 value of each pixel before float32 rounding."""
         if self.kernel == "exp_decay":
             return self._exp_decay_exact()
         if self.kernel == "timestamp_decay":
-            return self._timestamp_decay_exact()
+            return self._timestamp_decay_exact(self.watermark if at is None else at)
         raise ValueError(f"{self.kernel} has no inexact output")
 
     def _read_event_count(self) -> NDArray[np.uint32]:
@@ -162,13 +166,13 @@ class ReferenceAccumulator:
             terms[(y, x)].append(self.decay ** (self._calls - call))
         return self._sum(terms)
 
-    def _timestamp_decay_exact(self) -> NDArray[np.float64]:
+    def _timestamp_decay_exact(self, at: int | None) -> NDArray[np.float64]:
         assert self.tau_us is not None
         terms: defaultdict[tuple[int, int], list[float]] = defaultdict(list)
-        if self.watermark is not None:
+        if at is not None:
             tau = Fraction(self.tau_us)
             for t, x, y, _, _ in self._log:
-                terms[(y, x)].append(math.exp(-float(Fraction(self.watermark - t) / tau)))
+                terms[(y, x)].append(math.exp(-float(Fraction(at - t) / tau)))
         return self._sum(terms)
 
     def _sum(self, terms: dict[tuple[int, int], list[float]]) -> NDArray[np.float64]:
