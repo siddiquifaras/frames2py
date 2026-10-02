@@ -134,6 +134,7 @@ are the only ones Frames2Py ships.
 events: the largest timestamp among accumulated in-bounds events. `read()` receives the
 time at which to evaluate the representation: the latest accumulated watermark, or any later
 time. Both get `None` before the first in-bounds event.
+
 - `Accumulator` and `Engine` always pass the accumulated watermark to `read()`.
 - A later time comes from callers that evaluate a kernel at a chosen time. The offline
   windows helper planned for 1.1, not available yet, will read at frame boundaries, so it
