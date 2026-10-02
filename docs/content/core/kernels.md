@@ -129,3 +129,19 @@ polarity.
 validation, the range and bounds checks and the watermark; a kernel only sees a call's
 in-bounds events. It is a protocol to implement, not a plugin system; the five kernels above
 are the only ones Frames2Py ships.
+
+**The watermark argument.** `accumulate()` receives the watermark including the call's
+events: the largest timestamp among accumulated in-bounds events. `read()` receives the
+time at which to evaluate the representation: the latest accumulated watermark, or any later
+time. Both get `None` before the first in-bounds event.
+- `Accumulator` and `Engine` always pass the accumulated watermark to `read()`.
+- A later time comes from callers that evaluate a kernel at a chosen time. The offline
+  windows helper planned for 1.1, not available yet, will read at frame boundaries, so it
+  will need this.
+- `read()` must never change the kernel's state, whatever time it is given.
+- The five built-in kernels meet these rules.
+
+**Changed in 1.1.** In 1.0, `read()` only ever received the accumulated watermark. A
+kernel that relied on that may need adapting before it is used with a caller that reads at
+a later time. For example, a kernel might ignore the argument and use a watermark it stored
+in `accumulate()`, or update its state inside `read()`.
