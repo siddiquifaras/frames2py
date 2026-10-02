@@ -87,9 +87,10 @@ progress.
 - **Recommended patch level: 3.14.5 or later.** CPython 3.14.0 to 3.14.4 have a race in an
   internal lock ([gh-148820](https://github.com/python/cpython/issues/148820)) that can end
   the process with a fatal error when a signal or a spurious wakeup lands while threads
-  contend for that lock. `wait_for_newer()` makes such contention routine: every publication
-  wakes each waiter. The Engine doesn't check the patch level. The race was not reproduced
-  in Frames2Py's tests.
+  contend for that lock. `wait_for_newer()`'s blocking path uses the locking code that fix
+  changed: a waiter blocked in `Lock.acquire()` and the publication that releases it both
+  take CPython's internal parking-lot mutex. The Engine doesn't check the patch level. The
+  race was not reproduced in Frames2Py's tests.
 - **GIL enabled:** a free-threaded build running with the GIL enabled (for example
   `PYTHON_GIL=1`) behaves as a standard build and is treated as one.
 - **Throughput** on 3.14t has been measured on one machine (Apple M4); see

@@ -115,6 +115,11 @@ complete producer and consumer.
 - **Ctrl-C** in a main-thread waiter raises `KeyboardInterrupt` and leaves the Engine as it
   was, as CPython's `Lock.acquire()` allows: a SIGINT arriving as the wait starts blocking
   is acted on at its next wake, which is a publication, the timeout, or another SIGINT.
+- **Pass a timeout if the producer can be interrupted.** If Ctrl-C interrupts the
+  producer's thread during a publication, one waiter may stay blocked until its timeout,
+  and without a timeout indefinitely: the interrupted publication may have taken that
+  waiter off the registry without waking it. Later publications work normally and wake
+  every other waiter.
 
 ```python title="wait_for_newer.py"
 --8<-- "wait_for_newer.py"
