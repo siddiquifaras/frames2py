@@ -143,25 +143,40 @@ def test_hand_computed_cases_through_the_engine(case: Case) -> None:
 
 # --- generated streams against the oracle ---------------------------------------------------
 
-timestamps = st.one_of(st.integers(0, 3_000), st.integers(TIMESTAMP_LIMIT - 3_000, TIMESTAMP_LIMIT - 1))
-rows = st.tuples(timestamps, st.integers(0, WIDTH), st.integers(0, HEIGHT), st.integers(0, 255))
+Stream = tuple[str, int, int, list[Any]]
 
 
 @st.composite
-def configured(draw: st.DrawFn) -> tuple[str, int, int]:
+def streams(draw: st.DrawFn, max_size: int = 80) -> Stream:
+    """A kernel configuration and events placed around the bins its frames show.
+
+    Events fall in bins ``base - 2 ... base + bins + 1``, near t = 0 or near 2**63, so frames
+    are rarely empty. In about one stream in five, up to two more land anywhere below 2**63
+    (forward spikes, late events).
+    """
     kernel = draw(st.sampled_from(TEMPORAL_KERNELS))
     bins = draw(st.integers(MIN_BINS[kernel], 5))
     bin_us = draw(st.one_of(st.integers(1, 60), st.integers(1, BIN_US_LIMIT - 1)))
-    return kernel, bins, bin_us
+    last_bin = (TIMESTAMP_LIMIT - 1) // bin_us
+    base = draw(st.one_of(st.integers(0, 20), st.integers(last_bin - bins - 30, last_bin - bins - 2)))
+    near = draw(st.lists(st.tuples(st.integers(-2, bins + 1), st.integers(0, bin_us - 1), st.integers(0, WIDTH - 1),
+                                   st.integers(0, HEIGHT - 1), st.integers(0, 255), st.integers(0, 7)),
+                         min_size=4, max_size=max_size))
+    far_event = st.tuples(st.integers(0, TIMESTAMP_LIMIT - 1), st.integers(0, WIDTH), st.integers(0, HEIGHT),
+                          st.integers(0, 255))
+    far = draw(st.lists(far_event, max_size=2)) if draw(st.integers(0, 4)) == 0 else []
+    # about one event in eight is out of bounds
+    rows = [((base + k) * bin_us + r, x if inside else WIDTH, y, p) for k, r, x, y, p, inside in near if base + k >= 0]
+    for row in far:
+        rows.insert(draw(st.integers(0, len(rows))), row)
+    return kernel, bins, bin_us, rows
 
 
-@st.composite
-def partitioned(draw: st.DrawFn) -> tuple[list[Any], list[list[Any]]]:
-    """A stream, and the same events in another order cut into calls, empty ones included."""
-    stream = draw(st.lists(rows, max_size=80))
-    order = draw(st.permutations(stream))
-    cuts = sorted(draw(st.lists(st.integers(0, len(stream)), max_size=8)))
-    return stream, [list(order[a:b]) for a, b in zip([0, *cuts], [*cuts, len(stream)])]
+def split(data: st.DataObject, rows: list[Any], max_calls: int = 8) -> list[list[Any]]:
+    """*rows* in another order, cut into calls, empty ones included."""
+    order = data.draw(st.permutations(rows))
+    cuts = sorted(data.draw(st.lists(st.integers(0, len(rows)), max_size=max_calls)))
+    return [list(order[a:b]) for a, b in zip([0, *cuts], [*cuts, len(rows)])]
 
 
 def accumulate(kernel: str, bins: int, bin_us: int, calls: list[list[Any]]) -> Any:
@@ -171,11 +186,11 @@ def accumulate(kernel: str, bins: int, bin_us: int, calls: list[list[Any]]) -> A
     return acc
 
 
-@given(configured(), partitioned())
+@given(streams(), st.data())
 @settings(max_examples=300)
-def test_matches_the_oracle(config: tuple[str, int, int], stream: Any) -> None:
-    kernel, bins, bin_us = config
-    _, calls = stream
+def test_matches_the_oracle(stream: Stream, data: st.DataObject) -> None:
+    kernel, bins, bin_us, rows = stream
+    calls = split(data, rows)
     oracle = TemporalReference(kernel, SENSOR, bins=bins, bin_us=bin_us)
     for call in calls:
         oracle.accumulate(array(call))
@@ -184,17 +199,16 @@ def test_matches_the_oracle(config: tuple[str, int, int], stream: Any) -> None:
     assert bit_equal(acc.read(), oracle.read())
 
 
-@given(configured(), partitioned())
-def test_order_and_partition_dont_matter(config: tuple[str, int, int], stream: Any) -> None:
-    kernel, bins, bin_us = config
-    original, calls = stream
-    whole = accumulate(kernel, bins, bin_us, [original]).read()
-    assert bit_equal(accumulate(kernel, bins, bin_us, calls).read(), whole)
+@given(streams(), st.data())
+def test_order_and_partition_dont_matter(stream: Stream, data: st.DataObject) -> None:
+    kernel, bins, bin_us, rows = stream
+    whole = accumulate(kernel, bins, bin_us, [rows]).read()
+    assert bit_equal(accumulate(kernel, bins, bin_us, split(data, rows)).read(), whole)
 
 
-@given(configured(), st.lists(rows, max_size=60))
-def test_voxel_output_is_correctly_rounded_within_2_53(config: tuple[str, int, int], stream: list[Any]) -> None:
-    _, bins, bin_us = config
+@given(streams(max_size=60))
+def test_voxel_output_is_correctly_rounded_within_2_53(generated: Stream) -> None:
+    _, bins, bin_us, stream = generated
     bins = max(bins, 2)
     oracle = TemporalReference("voxel_grid", SENSOR, bins=bins, bin_us=bin_us)
     oracle.accumulate(array(stream))
@@ -302,9 +316,10 @@ def test_timestamp_discontinuities(kernel: str, calls: Any) -> None:
         assert bit_equal(acc.read(), oracle.read())
 
 
-@given(configured(), st.lists(rows, max_size=40), st.lists(rows, max_size=40))
-def test_reset_equals_a_fresh_accumulator(config: tuple[str, int, int], before: Any, after: Any) -> None:
-    kernel, bins, bin_us = config
+@given(streams(max_size=40), streams(max_size=40))
+def test_reset_equals_a_fresh_accumulator(first: Stream, second: Stream) -> None:
+    before = first[3]
+    kernel, bins, bin_us, after = second
     acc = accumulate(kernel, bins, bin_us, [before])
     acc.reset()
     acc.accumulate(array(after))
@@ -312,11 +327,12 @@ def test_reset_equals_a_fresh_accumulator(config: tuple[str, int, int], before: 
     assert bit_equal(acc.read(), accumulate(kernel, bins, bin_us, [after]).read())
 
 
-@given(configured(), st.lists(st.lists(rows, max_size=20), max_size=6), st.sampled_from([0.0, 16.0]))
+@given(streams(max_size=60), st.data(), st.sampled_from([0.0, 16.0]))
 def test_engine_snapshots_are_the_representation_at_their_watermark(
-    config: tuple[str, int, int], calls: list[list[Any]], interval_ms: float
+    stream: Stream, data: st.DataObject, interval_ms: float
 ) -> None:
-    kernel, bins, bin_us = config
+    kernel, bins, bin_us, rows = stream
+    calls = split(data, rows, max_calls=5)
     engine = impl.Engine(SENSOR, make(kernel, bins, bin_us), snapshot_interval_ms=interval_ms)
     oracle = TemporalReference(kernel, SENSOR, bins=bins, bin_us=bin_us)
     for call in calls:
@@ -363,3 +379,30 @@ def test_voxel_numerator_wraps_modulo_2_to_the_64() -> None:
     numerator = chunks * 2**24 * bin_us
     assert numerator > 2**63 - 1
     assert acc.read()[0, 0, 0] == voxel_value(numerator, bin_us) < 0
+
+
+@given(streams(max_size=40), st.data())
+def test_read_at_a_later_watermark_without_changing_state(generated: Stream, data: st.DataObject) -> None:
+    kernel_name, bins, bin_us, stream = generated
+    later = data.draw(st.one_of(st.integers(0, (bins + 2) * bin_us), st.integers(0, TIMESTAMP_LIMIT - 1)))
+    batch = array(stream)
+    inside = batch[(batch["x"] < WIDTH) & (batch["y"] < HEIGHT)]
+    if not len(inside):
+        return
+    oracle = TemporalReference(kernel_name, SENSOR, bins=bins, bin_us=bin_us)
+    oracle.accumulate(inside)
+    kernel = make(kernel_name, bins, bin_us)
+    state = kernel.init_state(SENSOR)
+    kernel.begin_call(state)
+    kernel.accumulate(inside, state, oracle.watermark)
+    shape, dtype = kernel.output_spec(SENSOR)
+    at = min(oracle.watermark + later, TIMESTAMP_LIMIT - 1)
+
+    def read(time: int) -> np.ndarray:
+        out = np.empty(shape, dtype=dtype)
+        kernel.read(state, out, time)
+        return out
+
+    before = read(oracle.watermark)
+    assert bit_equal(read(at), oracle.read(at=at))
+    assert bit_equal(read(oracle.watermark), before)

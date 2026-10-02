@@ -171,11 +171,13 @@ def windows(
     it is accumulated; the first is the first boundary after the first in-bounds event.
     Windows close after each frame. Boundaries the watermark never reaches have no frame.
 
-    Events are accumulated one at a time, so this doesn't model how the helper's splits
-    become calls; ``exp_decay``, the only kernel that can observe that, is out of scope.
+    ``exp_decay`` is rejected with ``TypeError``: its decay is per call, so its frames would
+    depend on where the helper splits batches.
     """
     width, height = sensor_size
     reference = make_reference()
+    if getattr(reference, "kernel", None) == "exp_decay":
+        raise TypeError("windows() doesn't accept exp_decay; use timestamp_decay")
     watermark: int | None = None
     boundary = 0
     out: list[tuple[int, NDArray[Any]]] = []

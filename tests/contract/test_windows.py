@@ -1,7 +1,6 @@
 """``replay.windows``: offline frames every N µs of event time, against the independent oracle.
 
 Skipped while the implementation under test has no ``replay.windows`` or no temporal kernels.
-``exp_decay`` is not checked through ``windows``: how its splits become calls is not settled.
 """
 
 from __future__ import annotations
@@ -104,6 +103,15 @@ def test_the_interval_is_keyword_only() -> None:
         windows([], SENSOR, impl.EventCount(), 10)
 
 
+def test_exp_decay_is_refused_on_the_call() -> None:
+    class Subclass(impl.ExpDecay):
+        pass
+
+    for kernel in (impl.ExpDecay(0.5), Subclass(0.9)):
+        with pytest.raises(TypeError, match="TimestampDecay"):
+            windows(untouched(), SENSOR, kernel, every_us=10)
+
+
 def test_accepts_numpy_integers_and_any_iterable() -> None:
     got = list(windows(iter([array([(3, 0, 0, 1), (12, 0, 0, 1)])]), SENSOR, impl.EventCount(),
                        every_us=np.int64(10)))
@@ -156,12 +164,12 @@ def test_a_malformed_batch_raises_type_error_when_reached() -> None:
         list(windows([array([(3, 0, 0, 1)]), bad], SENSOR, impl.EventCount(), every_us=10))
 
 
-rows = st.tuples(st.integers(0, 300), st.integers(0, WIDTH), st.integers(0, HEIGHT), st.integers(0, 255))
-
-
 @st.composite
 def batched(draw: st.DrawFn) -> list[list[Any]]:
-    stream = draw(st.lists(rows, max_size=60))
+    """Events dense in t = 0 ... 80, about one in eight out of bounds, cut into batches."""
+    drawn = draw(st.lists(st.tuples(st.integers(0, 80), st.integers(0, WIDTH - 1), st.integers(0, HEIGHT - 1),
+                                    st.integers(0, 255), st.integers(0, 7)), min_size=3, max_size=60))
+    stream = [(t, x if inside else WIDTH, y, p) for t, x, y, p, inside in drawn]
     cuts = sorted(draw(st.lists(st.integers(0, len(stream)), max_size=6)))
     return [stream[a:b] for a, b in zip([0, *cuts], [*cuts, len(stream)])]
 

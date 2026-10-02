@@ -102,6 +102,11 @@ def test_windows_reads_timestamp_decay_at_the_boundary() -> None:
     assert got[0][1][0, 0] == np.float32(math.exp(-1.0))  # (10 - 0) / tau, not (0 - 0) / tau
 
 
+def test_windows_rejects_exp_decay() -> None:
+    with pytest.raises(TypeError):
+        windows([array([(3, 0, 0, 1), (12, 0, 0, 1)])], SENSOR, make_reference("exp_decay", {"decay": 0.5}), 10)
+
+
 def test_windows_rejects_a_batch_before_accumulating_any_of_it() -> None:
     batches = [array([(3, 0, 0, 1)]), array([(25, 0, 0, 1), (2**63, 0, 0, 1)])]
     with pytest.raises(ValueError):
@@ -168,15 +173,16 @@ def test_output_is_correctly_rounded_next_to_float32_midpoints(seed: int) -> Non
 
 # --- properties of the definitions ----------------------------------------------------------
 
-ROW = st.tuples(st.integers(0, 400), st.integers(0, WIDTH), st.integers(0, HEIGHT), st.integers(0, 255))
-
-
 @st.composite
 def streams(draw: st.DrawFn) -> tuple[str, int, int, list[tuple[int, int, int, int]]]:
+    """Events in bins 0 ... bins + 2, so frames are rarely empty; about one in eight out of bounds."""
     kernel = draw(st.sampled_from(TEMPORAL_KERNELS))
     bins = draw(st.integers(2 if kernel == "voxel_grid" else 1, 6))
     bin_us = draw(st.integers(1, 40))
-    rows = draw(st.lists(ROW, max_size=60))
+    drawn = draw(st.lists(st.tuples(st.integers(0, bins + 2), st.integers(0, bin_us - 1), st.integers(0, WIDTH - 1),
+                                    st.integers(0, HEIGHT - 1), st.integers(0, 255), st.integers(0, 7)),
+                          min_size=3, max_size=60))
+    rows = [(k * bin_us + r, x if inside else WIDTH, y, p) for k, r, x, y, p, inside in drawn]
     return kernel, bins, bin_us, rows
 
 
