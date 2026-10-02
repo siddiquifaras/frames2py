@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from tests.contract.api import impl
-from tests.contract.helpers import SENSOR, events
+from tests.contract.helpers import ALL, KERNELS, SENSOR, assert_matches, events, random_events
 
 
 class Recording:
@@ -130,3 +130,28 @@ def test_stopped_engine_makes_no_kernel_calls(kernel: Recording) -> None:
     before = len(kernel.calls)
     engine.ingest(events((4, 2, 1, 1)))
     assert len(kernel.calls) == before
+
+
+@pytest.mark.parametrize("name", ALL)
+@pytest.mark.parametrize("later", [0, 1, 37, 10**6, 2**63 - 1], ids=lambda d: f"+{d}")
+def test_builtin_kernels_read_at_a_later_watermark_without_changing_state(name: str, later: int) -> None:
+    case = KERNELS[name]
+    kernel = case.make()
+    state = kernel.init_state(SENSOR)
+    batch = random_events(7, 200, t_max=5_000, out_of_bounds=False)
+    oracle = case.oracle()
+    oracle.accumulate(batch)
+    watermark = int(batch["t"].max())
+    kernel.begin_call(state)
+    kernel.accumulate(batch, state, watermark)
+    shape, dtype = kernel.output_spec(SENSOR)
+    at = min(watermark + later, 2**63 - 1)
+
+    def read(time: int) -> np.ndarray:
+        out = np.empty(shape, dtype=dtype)
+        kernel.read(state, out, time)
+        return out
+
+    before = read(watermark)
+    assert_matches(read(at), oracle, at)
+    np.testing.assert_array_equal(read(watermark), before)  # reading later changed nothing
