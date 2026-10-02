@@ -25,6 +25,9 @@ about the five v1 kernels.
   them, plus any later commit, with no `src/` change after it, that is needed to run the method.
 - Every result document records the commit it ran on and the working-tree state. A document from anything but a clean
   tree at the measured commit is not classified.
+- Every run records the git tree hash of `src/` for the measured build (`git rev-parse <commit>:src`), so the measured
+  code is unambiguous. Runs of one runtime must record the same hash, or their document is not classified (amendment
+  1).
 - Kernel- and engine-level documents of one runtime come from the same commit.
 
 ## 3. Machine, runtimes and environment
@@ -202,4 +205,7 @@ files are never overwritten.
 Numbered and dated, each naming what changed and why, committed before any run it affects. No amendment changes
 sections 1, 4 or 8 after the first evidentiary run.
 
-None yet.
+1. **2026-10-03, before any data:** every run records the git tree hash of `src/` for the measured build, and runs of
+   one runtime must agree on it (section 2). **Why:** the measured commit may be followed by commits that change
+   nothing under `src/` (section 2), so the commit alone doesn't pin the measured code; the tree hash does. The
+   owner's instruction.
