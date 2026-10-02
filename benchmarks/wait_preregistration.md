@@ -244,8 +244,10 @@ amendment changes section 8 after the first evidentiary run.
 All four were made on 2026-10-02, before any evidentiary run: none exists. The harness validation was re-run after
 them (section 10).
 
-1. **The W = 0 criterion applies to the M2 Engine-level cells only, as decisions.md 80 states.** M1 at W = 0 (F0
+1. **The W = 0 criterion applies to the M2 Engine-level cells only.** The user narrowed it to M2 by the amendment to
+   decisions.md 80 of 2026-10-02; 80's original text covered every preregistered Engine-level cell. M1 at W = 0 (F0
    against B) is characterisation: computed by section 8's procedure and reported, but not part of the verdict.
+   (Wording corrected by 11.2, correction 1.)
 2. **M3 is added:** the paced comparison of waiters and pollers (section 4, M3; section 8.6), characterisation only.
    It adds 12 runs per pass.
 3. **Approved by the user as written:** M1's design (1-event batches, 2,000 publications per run, 346x260 and
@@ -257,3 +259,11 @@ them (section 10).
      annotation edits.
    - The W = 0 publication path differs only in the drain loop's body, which runs only when a waiter is registered.
    - `src/` is identical from `dcc1fa1` to the commit that adds this amendment.
+
+### 11.2 Listed corrections
+
+Wording only. No parameter, rule or cell changes.
+
+1. **2026-10-02, amendment 1.** It first said the M2-only criterion held "as decisions.md 80 states". 80's original text
+   covered every preregistered Engine-level cell, which includes M1. The narrowing to M2 is the user's amendment to 80
+   of 2026-10-02. Amendment 1 now says so.
