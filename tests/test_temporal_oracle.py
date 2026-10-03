@@ -175,12 +175,12 @@ def test_output_is_correctly_rounded_next_to_float32_midpoints(seed: int) -> Non
 
 @st.composite
 def streams(draw: st.DrawFn) -> tuple[str, int, int, list[tuple[int, int, int, int]]]:
-    """Events in bins 0 ... bins + 2, so frames are rarely empty; 3 in 16 out of bounds (in x, y or both)."""
+    """Events in bins 0 ... bins + 2, so frames are rarely empty; one in eight out of bounds (in x, y or both)."""
     kernel = draw(st.sampled_from(TEMPORAL_KERNELS))
     bins = draw(st.integers(2 if kernel == "voxel_grid" else 1, 6))
     bin_us = draw(st.integers(1, 40))
     drawn = draw(st.lists(st.tuples(st.integers(0, bins + 2), st.integers(0, bin_us - 1), st.integers(0, WIDTH - 1),
-                                    st.integers(0, HEIGHT - 1), st.integers(0, 255), st.integers(0, 15)),
+                                    st.integers(0, HEIGHT - 1), st.integers(0, 255), st.integers(0, 23)),
                           min_size=3, max_size=60))
     rows = [(k * bin_us + r, WIDTH if where in (0, 2) else x, HEIGHT if where in (1, 2) else y, p)
             for k, r, x, y, p, where in drawn]

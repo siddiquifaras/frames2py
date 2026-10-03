@@ -157,9 +157,9 @@ def test_a_malformed_batch_raises_type_error_when_reached() -> None:
 
 @st.composite
 def batched(draw: st.DrawFn) -> list[list[Any]]:
-    """Events dense in t = 0 ... 80, 3 in 16 out of bounds (in x, y or both), cut into batches."""
+    """Events dense in t = 0 ... 80, one in eight out of bounds (in x, y or both), cut into batches."""
     drawn = draw(st.lists(st.tuples(st.integers(0, 80), st.integers(0, WIDTH - 1), st.integers(0, HEIGHT - 1),
-                                    st.integers(0, 255), st.integers(0, 15)), min_size=3, max_size=60))
+                                    st.integers(0, 255), st.integers(0, 23)), min_size=3, max_size=60))
     stream = [(t, WIDTH if where in (0, 2) else x, HEIGHT if where in (1, 2) else y, p)
               for t, x, y, p, where in drawn]
     cuts = sorted(draw(st.lists(st.integers(0, len(stream)), max_size=6)))

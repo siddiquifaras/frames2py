@@ -139,7 +139,7 @@ Stream = tuple[str, int, int, list[Any]]
 
 
 def outside(x: int, y: int, where: int) -> tuple[int, int]:
-    """``(x, y)``, moved out of bounds for 3 *where* values in 16: in x, in y, or in both."""
+    """``(x, y)``, moved out of bounds for 3 *where* values in 24 (one event in eight): in x, in y, or both."""
     return (WIDTH if where in (0, 2) else x), (HEIGHT if where in (1, 2) else y)
 
 
@@ -157,7 +157,7 @@ def streams(draw: st.DrawFn, max_size: int = 80) -> Stream:
     last_bin = (TIMESTAMP_LIMIT - 1) // bin_us
     base = draw(st.one_of(st.integers(0, 20), st.integers(last_bin - bins - 30, last_bin - bins - 2)))
     near = draw(st.lists(st.tuples(st.integers(-2, bins + 1), st.integers(0, bin_us - 1), st.integers(0, WIDTH - 1),
-                                   st.integers(0, HEIGHT - 1), st.integers(0, 255), st.integers(0, 15)),
+                                   st.integers(0, HEIGHT - 1), st.integers(0, 255), st.integers(0, 23)),
                          min_size=4, max_size=max_size))
     far_event = st.tuples(st.integers(0, TIMESTAMP_LIMIT - 1), st.integers(0, WIDTH), st.integers(0, HEIGHT),
                           st.integers(0, 255))
