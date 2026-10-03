@@ -86,6 +86,70 @@ paths and machine-specific details left out.
 | `stage1` | this level's classification: `clear_pass`, `borderline` or `clear_miss` |
 | `level_result`, `cell_verdict` | this level's result, and the cell's verdict over both levels |
 
+## The temporal-kernel gate
+
+`StackedHistogram` and `VoxelGrid`, added in 1.1, have a gate of their own, written down in
+`benchmarks/temporal_gate_preregistration.md` before the kernels existed. Its results are
+summarised under [Throughput](../core/kernels.md#throughput) on the kernels page. It uses the
+gate above, with these differences:
+
+- **Cells.** 150 cells: five kernel configurations (`StackedHistogram` 5 x 10,000, 15 x 3,333
+  and 10 x 5,000 µs; `VoxelGrid` 5 x 12,500 and 15 x 3,571 µs, each about 50 ms of event time
+  per frame) x three resolutions (346x260, 640x480, 1280x720) x five batch and interval
+  conditions (10k @ 16 ms; 100k and 1M @ 0 and 16 ms) x two distributions.
+- **Event time.** Events advance at 20M events/s of event time (20 per µs), not one per µs,
+  so event time and the Engine level's virtual arrival clock advance together and bins close
+  as they would in a live 20M events/s stream.
+- **Result checks.** At kernel level the state, read at the final watermark, must equal bit
+  for bit a reference built with `np.bincount`; at Engine level the counters, publication
+  schedule, sequence numbers and watermarks are checked as above, and the last published
+  frame against the reference.
+- **Plane clearing.** A separate instrumented pass, never a timed run, measures the share of
+  kernel-level time spent clearing planes.
+
+Statistics, classification, calls per run and the 5-run median are the gate's. The
+reference machine and runtimes are the same: Apple M4 (4P + 6E), 16 GB, macOS 15.7.7;
+CPython 3.11.14 and CPython 3.14.2 free-threaded with the GIL disabled, both with NumPy
+2.4.6. Every run was inside the sleep guard (below).
+
+To measure it on your machine, use the commands of
+[Measuring your own machine](#measuring-your-own-machine) with `--suite temporal-gate` and the
+targets `temporal-kernel` and `temporal-engine`. `benchmarks/temporal_gate.sh` runs the
+gate's full sequence for both runtimes.
+
+**The first run** (2026-10-03, commit `4d5a9f3`) is the gate's result for these kernels:
+**not met**. On 3.11.14 137 cells passed and 13 missed; on 3.14.2t 135 passed and 15 missed.
+Every cell passed at kernel level; every miss was at Engine level. The machine was prepared as
+the preregistration requires.
+
+**The second run** (2026-10-03, commit `8131aca`) measured the kernels after performance
+changes made following the first run. It is a later measurement recorded
+alongside the first, not a replacement for it. On each runtime 138 cells passed and 12
+missed, all at Engine level. Its environment control was weaker than the first run's:
+
+- the machine was not prepared by its owner, and the "only one terminal open" condition
+  was not verified;
+- the power adapter had been unplugged for about an hour before the run started;
+- the adapter lost power for 10 seconds during the fourth 3.11.14 kernel-level run. That run's
+  measurements of 28 cells were not on mains power at their start or end, and the gate tool's
+  own verdict for 3.11.14 classifies 27 cells INVALID (the 28th missed at Engine level). As
+  the preregistration allows for an environment failure, those 28 measurements were taken
+  again once, with the same code and workload, and merged by hand into the result in place of
+  the failed ones. The published 3.11.14 figures include that merge.
+
+**Data files.**
+[`temporal_gate_run1.csv`](https://github.com/siddiquifaras/frames2py/blob/main/benchmarks/results/temporal_gate_run1.csv)
+and
+[`temporal_gate_run2.csv`](https://github.com/siddiquifaras/frames2py/blob/main/benchmarks/results/temporal_gate_run2.csv)
+have 600 rows each and the columns of `gate_v1.csv` above, with `kernel_parameters` as
+`bins=...;bin_us=...` and these additions:
+
+| column | meaning |
+|---|---|
+| `stage2_events_per_s` | the median of the 20 stage-2 runs, for a borderline level; empty otherwise |
+| `stage2_runs_at_20m` | how many of those 20 runs reached 20M events/s |
+| `qualification` | empty, or what is unusual about the row: in run 2, the 28 rows measured again after the power loss |
+
 ## Measuring your own machine
 
 From a checkout, with the development environment (`uv sync`), writing results outside the

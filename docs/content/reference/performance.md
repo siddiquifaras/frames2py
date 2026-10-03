@@ -6,6 +6,8 @@ hardware has been measured, and CI measures no throughput. Treat the numbers as 
 machine did under these conditions, not as a rate for yours. How the gate was measured is on
 [Benchmark methodology](methodology.md); every gate cell is in
 [`benchmarks/results/gate_v1.csv`](https://github.com/siddiquifaras/frames2py/blob/main/benchmarks/results/gate_v1.csv).
+The temporal kernels added in 1.1 had a gate of their own, which they did not meet in every
+cell: see [Throughput](../core/kernels.md#throughput) on the kernels page.
 
 ## The v1 performance gate
 

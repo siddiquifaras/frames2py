@@ -251,8 +251,50 @@ to `H x W` per bin entered.
 platform, a large state can be created successfully and raise `MemoryError` later, when its
 memory is first used. Sizes NumPy itself refuses fail at construction.
 
-Throughput of these two kernels hasn't been measured yet; the
-[Performance](../reference/performance.md) page covers the five kernels above.
+### Throughput
+
+These are reference measurements from **one machine**, an Apple M4 (16 GB), on CPython
+3.11.14 and on CPython 3.14.2t with the GIL disabled, both with NumPy 2.4.6. They are not
+guarantees for other hardware or workloads. The figures are from the second run of the
+temporal kernels' gate (commit `8131aca`); its method and qualifications are
+on [Benchmark methodology](../reference/methodology.md#the-temporal-kernel-gate), and every
+cell is in
+[`benchmarks/results/temporal_gate_run2.csv`](https://github.com/siddiquifaras/frames2py/blob/main/benchmarks/results/temporal_gate_run2.csv).
+The gate's target is 20M events/s at kernel level and through `Engine.ingest()`, for five
+parameter sets (`StackedHistogram` 5 x 10,000, 15 x 3,333 and 10 x 5,000 µs; `VoxelGrid` 5 x
+12,500 and 15 x 3,571 µs), three resolutions, batches of 10k, 100k and 1M events, and
+publication every call (0 ms) or every 16 ms. **The target is not met everywhere.**
+
+- **Accumulation alone** (kernel level): at least 29M events/s in every cell, up to about
+  185M.
+- **Through the Engine**, 12 of the 150 cells stay below 20M events/s on each runtime (138
+  pass). Every one is at 1280x720, or at 640x480 with `VoxelGrid` 15 bins, and publishes
+  large frames often:
+
+| parameter set | sensor | batch @ interval | M events/s, 3.11.14 / 3.14.2t |
+|---|---|---|---|
+| `StackedHistogram` 15 x 3,333 | 1280x720 | 100k @ 0 ms | 14.5 / 14.3 (uniform), 15.3 / 15.5 (clustered) |
+| `StackedHistogram` 10 x 5,000 | 1280x720 | 100k @ 0 ms, uniform | 20.5 / 20.3 over 5 runs, inside the gate's uncertainty band; in 20 more runs 16 and 12 reached 20M, short of the 18 required (it passed in the gate's first run) |
+| `VoxelGrid` 5 x 12,500 | 1280x720 | 100k @ 0 ms | 17.8 / 17.6 (uniform), 19.3 / 19.2 (clustered) |
+| `VoxelGrid` 15 x 3,571 | 640x480 | 100k @ 0 ms | 16.2 / 15.8 (uniform), 16.8 / 17.3 (clustered) |
+| `VoxelGrid` 15 x 3,571 | 1280x720 | 10k @ 16 ms | 15.1 / 13.1 (uniform), 18.7 / 15.3 (clustered) |
+| `VoxelGrid` 15 x 3,571 | 1280x720 | 100k @ 0 ms | 6.8 / 6.6 (uniform), 7.2 / 7.0 (clustered) |
+| `VoxelGrid` 15 x 3,571 | 1280x720 | 100k @ 16 ms, uniform | 19.0 / 17.6 |
+
+`VoxelGrid` with 15 bins at 1280x720 sustained 6.6-7.2M events/s when it published every
+100k events, 13-19M with 10k-event calls at 16 ms, and 28-34M with 1M-event calls. Each
+publication there produces a new 52.7 MiB frame (see [Memory](#memory)).
+
+Some small-batch cells vary widely between runs: with 10k-event calls at 16 ms, one run of a
+cell can be several times as fast as another (for example 29.8-105.9M events/s through
+the Engine for `StackedHistogram` 15 x 3,333 at 346x260). The per-run ranges are in the data
+file.
+
+**For high event rates with large configurations:** fewer bins, a lower resolution, larger
+batches, or a publication interval (frames are produced only at publication) all reduce the
+work per event. `StackedHistogram` with 5 bins and `VoxelGrid` with 5 bins at 640x480 and below
+met 20M events/s in every cell. For offline use, [`windows()`](../data/replay.md#frames-in-event-time)
+has no rate to keep up with.
 
 ### Viewing and offline frames
 
