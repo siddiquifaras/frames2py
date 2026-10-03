@@ -50,6 +50,7 @@ class _Planes:
     newest: int | None = None  # the bin of the watermark at the last accumulate()
     total: int = 0  # events accumulated since reset
     cleared_at: list[int] | None = None  # per plane: total when the plane was last cleared
+    scratch: NDArray[Any] | None = None  # VoxelGrid.read's working plane, kept so it isn't faulted in again
 
 
 def _clear_planes(state: _Planes, newest: int) -> None:
@@ -239,7 +240,9 @@ class VoxelGrid(_Temporal):
         ring = state.planes.shape[1]
         first = watermark // self._bin_us - self._bins + 1  # the first knot's bin
         last = first + self._bins - 1  # the last knot's bin: the one in progress at the watermark
-        scratch = np.empty(state.planes.shape[2], dtype=np.uint64)
+        if state.scratch is None:
+            state.scratch = np.empty(state.planes.shape[2], dtype=np.uint64)
+        scratch = state.scratch
         for j in range(self._bins):
             k = first + j
             # Knot k gets the start parts of bin k and the end parts of bin k - 1, each only

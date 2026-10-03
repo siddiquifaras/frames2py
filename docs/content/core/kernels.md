@@ -240,7 +240,8 @@ Sizes in bytes, for an `H x W` sensor:
 | `VoxelGrid` | `2 * bins * H * W * 8` | `bins * H * W * 4` |
 
 At 1280x720: `StackedHistogram(bins=10, ...)` keeps 77.3 MiB of state and publishes 70.3
-MiB frames; `VoxelGrid(bins=5, ...)` keeps 70.3 MiB and publishes 17.6 MiB frames. An Engine
+MiB frames; `VoxelGrid(bins=5, ...)` keeps 70.3 MiB and publishes 17.6 MiB frames. After its
+first read, `VoxelGrid` also keeps one `H * W * 8`-byte working plane (7.0 MiB at 1280x720). An Engine
 allocates a new frame for every publication, and the frames consumers still hold stay
 alive. The state has one set of planes per bin a later read can still show; when the
 watermark enters a new bin, the planes of the bin it entered are zeroed, work proportional
