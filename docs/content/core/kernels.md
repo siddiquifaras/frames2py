@@ -145,4 +145,4 @@ time. Both get `None` before the first in-bounds event.
 **Changed in 1.1.** In 1.0, `read()` only ever received the accumulated watermark. A
 kernel that relied on that may need adapting before it is used with a caller that reads at
 a later time. For example, a kernel might ignore the argument and use a watermark it stored
-in `accumulate()`, or update its state inside `read()`.
+in `accumulate()`.
