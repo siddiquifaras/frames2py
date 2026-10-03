@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import functools
+import json
 from typing import Any
 
 import numpy as np
@@ -12,7 +13,8 @@ import pytest
 import frames2py.kernels._temporal as temporal_module
 from frames2py import EVENT_DTYPE
 
-from benchmarks import gate
+from benchmarks import gate, results
+from benchmarks.__main__ import main
 from benchmarks.matrix import (
     GATE_BATCH_INTERVALS,
     GATE_DISTRIBUTIONS,
@@ -230,3 +232,15 @@ class TestClassification:
         kernel["environment_end"]["untracked_files"] = [{"path": "x.py", "sha256": "0"}]
         with pytest.raises(ValueError, match="clean working tree"):
             gate.verdicts(kernel, engine)
+
+    def test_the_gate_command_classifies_temporal_documents(self, tmp_path: Any, capsys: Any) -> None:
+        kernel, engine = _documents()
+        paths = {}
+        for name, document in (("kernel", kernel), ("engine", engine)):
+            paths[name] = tmp_path / f"{name}.json"
+            results.write(paths[name], document)
+        assert main(["gate", "--kernel-level", str(paths["kernel"]), "--engine-level", str(paths["engine"]),
+                     "--out", str(tmp_path / "gate.json")]) == 0
+        verdicts = json.loads((tmp_path / "gate.json").read_text())
+        assert verdicts["suite"] == "temporal-gate" and verdicts["gate"] == "MET"
+        assert len(verdicts["cells"]) == 150 and "Gate: MET" in capsys.readouterr().out
