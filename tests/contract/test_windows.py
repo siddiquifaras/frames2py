@@ -1,7 +1,4 @@
-"""``replay.windows``: offline frames every N µs of event time, against the independent oracle.
-
-Skipped while the implementation under test has no ``replay.windows`` or no temporal kernels.
-"""
+"""``replay.windows``: offline frames every N µs of event time, against the independent oracle."""
 
 from __future__ import annotations
 
@@ -20,18 +17,11 @@ from tests.temporal_cases import SENSOR, WINDOW_CASES, WindowCase
 from tests.temporal_oracle import TEMPORAL_KERNELS, TIMESTAMP_LIMIT, TemporalReference, windows as oracle_windows
 
 
-def _windows() -> Any:
-    try:
-        return importlib.import_module(f"{impl.__name__}.replay").windows
-    except (ImportError, AttributeError):
-        return None
 
 
-windows = _windows()
-pytestmark = pytest.mark.skipif(
-    windows is None or not (hasattr(impl, "VoxelGrid") and hasattr(impl, "StackedHistogram")),
-    reason="the implementation under test has no replay.windows or no temporal kernels",
-)
+def windows(*args: Any, **kwargs: Any) -> Any:
+    """``replay.windows`` of the implementation under test, looked up on each call."""
+    return importlib.import_module(f"{impl.__name__}.replay").windows(*args, **kwargs)
 
 WIDTH, HEIGHT = SENSOR
 KERNELS: dict[str, tuple[Any, dict[str, Any]]] = {
@@ -166,10 +156,11 @@ def test_a_malformed_batch_raises_type_error_when_reached() -> None:
 
 @st.composite
 def batched(draw: st.DrawFn) -> list[list[Any]]:
-    """Events dense in t = 0 ... 80, about one in eight out of bounds, cut into batches."""
+    """Events dense in t = 0 ... 80, 3 in 16 out of bounds (in x, y or both), cut into batches."""
     drawn = draw(st.lists(st.tuples(st.integers(0, 80), st.integers(0, WIDTH - 1), st.integers(0, HEIGHT - 1),
-                                    st.integers(0, 255), st.integers(0, 7)), min_size=3, max_size=60))
-    stream = [(t, x if inside else WIDTH, y, p) for t, x, y, p, inside in drawn]
+                                    st.integers(0, 255), st.integers(0, 15)), min_size=3, max_size=60))
+    stream = [(t, WIDTH if where in (0, 2) else x, HEIGHT if where in (1, 2) else y, p)
+              for t, x, y, p, where in drawn]
     cuts = sorted(draw(st.lists(st.integers(0, len(stream)), max_size=6)))
     return [stream[a:b] for a, b in zip([0, *cuts], [*cuts, len(stream)])]
 

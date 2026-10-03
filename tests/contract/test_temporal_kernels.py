@@ -1,7 +1,4 @@
-"""The temporal kernels through ``Accumulator`` and ``Engine``, against the independent oracle.
-
-Skipped while the implementation under test has no ``VoxelGrid`` or ``StackedHistogram``.
-"""
+"""The temporal kernels through ``Accumulator`` and ``Engine``, against the independent oracle."""
 
 from __future__ import annotations
 
@@ -25,11 +22,6 @@ from tests.temporal_oracle import (
     TemporalReference,
     correctly_rounded_float32,
     voxel_value,
-)
-
-pytestmark = pytest.mark.skipif(
-    not (hasattr(impl, "VoxelGrid") and hasattr(impl, "StackedHistogram")),
-    reason="the implementation under test has no temporal kernels",
 )
 
 SLOW = os.environ.get("FRAMES2PY_SLOW_TESTS") == "1"
@@ -146,6 +138,11 @@ def test_hand_computed_cases_through_the_engine(case: Case) -> None:
 Stream = tuple[str, int, int, list[Any]]
 
 
+def outside(x: int, y: int, where: int) -> tuple[int, int]:
+    """``(x, y)``, moved out of bounds for 3 *where* values in 16: in x, in y, or in both."""
+    return (WIDTH if where in (0, 2) else x), (HEIGHT if where in (1, 2) else y)
+
+
 @st.composite
 def streams(draw: st.DrawFn, max_size: int = 80) -> Stream:
     """A kernel configuration and events placed around the bins its frames show.
@@ -160,13 +157,12 @@ def streams(draw: st.DrawFn, max_size: int = 80) -> Stream:
     last_bin = (TIMESTAMP_LIMIT - 1) // bin_us
     base = draw(st.one_of(st.integers(0, 20), st.integers(last_bin - bins - 30, last_bin - bins - 2)))
     near = draw(st.lists(st.tuples(st.integers(-2, bins + 1), st.integers(0, bin_us - 1), st.integers(0, WIDTH - 1),
-                                   st.integers(0, HEIGHT - 1), st.integers(0, 255), st.integers(0, 7)),
+                                   st.integers(0, HEIGHT - 1), st.integers(0, 255), st.integers(0, 15)),
                          min_size=4, max_size=max_size))
     far_event = st.tuples(st.integers(0, TIMESTAMP_LIMIT - 1), st.integers(0, WIDTH), st.integers(0, HEIGHT),
                           st.integers(0, 255))
     far = draw(st.lists(far_event, max_size=2)) if draw(st.integers(0, 4)) == 0 else []
-    # about one event in eight is out of bounds
-    rows = [((base + k) * bin_us + r, x if inside else WIDTH, y, p) for k, r, x, y, p, inside in near if base + k >= 0]
+    rows = [((base + k) * bin_us + r, *outside(x, y, where), p) for k, r, x, y, p, where in near if base + k >= 0]
     for row in far:
         rows.insert(draw(st.integers(0, len(rows))), row)
     return kernel, bins, bin_us, rows
