@@ -24,6 +24,10 @@ from frames2py.kernels._builtin import EventArray, Spec, _flat_index, _hw
 BIN_US_LIMIT: Final = 2**28
 """``bin_us`` must be below this."""
 
+_MAGIC: Final = 6755399441055744.0  # 1.5 * 2**52
+_MAGIC_BITS: Final = np.uint64(0x4338000000000000)  # its float64 bits
+_EXACT_BELOW: Final = 2**51  # |n| below this: bits(_MAGIC) + n is the float64 _MAGIC + n exactly
+
 
 def _parameter(value: Any, name: str, minimum: int, limit: int | None = None) -> int:
     """*value* as an int through ``operator.index``; anything else, or out of range, raises ``ValueError``."""
@@ -44,6 +48,8 @@ class _Planes:
     planes: NDArray[Any]  # (parts, ring, H * W)
     width: int
     newest: int | None = None  # the bin of the watermark at the last accumulate()
+    total: int = 0  # events accumulated since reset
+    cleared_at: list[int] | None = None  # per plane: total when the plane was last cleared
 
 
 def _clear_planes(state: _Planes, newest: int) -> None:
@@ -55,9 +61,13 @@ def _clear_planes(state: _Planes, newest: int) -> None:
     ring = state.planes.shape[1]
     if newest - previous >= ring:
         state.planes[...] = 0
+        if state.cleared_at is not None:
+            state.cleared_at[:] = [state.total] * ring
         return
     for k in range(previous + 1, newest + 1):
         state.planes[:, k % ring] = 0
+        if state.cleared_at is not None:
+            state.cleared_at[k % ring] = state.total
 
 
 def _recent(events: EventArray, oldest: int, bin_us: int) -> EventArray:
@@ -90,6 +100,9 @@ class _Temporal:
     def reset(self, state: _Planes) -> None:
         state.planes[...] = 0
         state.newest = None
+        state.total = 0
+        if state.cleared_at is not None:
+            state.cleared_at[:] = [0] * len(state.cleared_at)
 
     def _live(self, state: _Planes, k: int) -> bool:
         """Whether bin *k* is held in a plane. Bins after the newest hold no event yet."""
@@ -194,7 +207,8 @@ class VoxelGrid(_Temporal):
         # Per live bin, the numerator parts its events give the knot at its start (plane 0)
         # and the knot at its end (plane 1): bins planes each, the span at the watermark
         # and the bin in progress.
-        return _Planes(np.zeros((2, self._bins, height * width), dtype=np.uint64), width)
+        planes = np.zeros((2, self._bins, height * width), dtype=np.uint64)
+        return _Planes(planes, width, cleared_at=[0] * self._bins)
 
     def accumulate(self, events: EventArray, state: _Planes, watermark: int | None) -> None:
         if watermark is None:
@@ -204,14 +218,15 @@ class VoxelGrid(_Temporal):
         ring = state.planes.shape[1]
         pixels = state.planes.shape[2]
         events = _recent(events, newest - ring + 1, self._bin_us)
+        state.total += len(events)
         q, r = np.divmod(events["t"], np.uint64(self._bin_us))
         index = np.multiply(np.remainder(q, ring), pixels, dtype=np.intp)
         np.add(index, _flat_index(events, state.width), out=index)
-        start = np.subtract(np.uint64(self._bin_us), r)
         off = events["p"] == 0
         # uint64 arithmetic: negation and sums are modulo 2**64.
-        np.negative(start, out=start, where=off)
-        np.negative(r, out=r, where=off)
+        start = np.subtract(np.uint64(self._bin_us), r)
+        start = np.where(off, np.negative(start), start)
+        r = np.where(off, np.negative(r), r)
         flat = state.planes.reshape(-1)
         np.add.at(flat, index, start)
         np.add(index, ring * pixels, out=index)
@@ -238,5 +253,16 @@ class VoxelGrid(_Temporal):
                 numerator = end
             else:
                 numerator = start if end is None else np.add(start, end, out=scratch)
-            np.divide(numerator.view(np.int64).reshape(out.shape[1:]), float(self._bin_us), out=out[j],
-                      dtype=np.float64, casting="same_kind")
+            # A plane holds at most the events accumulated since it was cleared, each moving a
+            # numerator by at most bin_us. Below 2**51 the conversion to float64 can add a
+            # constant to the bits and subtract it as a float instead, exactly and faster.
+            assert state.cleared_at is not None
+            events_in = 2 * state.total - state.cleared_at[k % ring] - state.cleared_at[(k - 1) % ring]
+            if events_in * self._bin_us < _EXACT_BELOW:
+                exact = scratch.view(np.float64)
+                np.add(numerator, _MAGIC_BITS, out=scratch)
+                np.subtract(exact, _MAGIC, out=exact)
+                np.divide(exact.reshape(out.shape[1:]), float(self._bin_us), out=out[j], casting="same_kind")
+            else:
+                np.divide(numerator.view(np.int64).reshape(out.shape[1:]), float(self._bin_us), out=out[j],
+                          dtype=np.float64, casting="same_kind")
