@@ -18,6 +18,8 @@ TOP_LEVEL = {
     "TimeSurface",
     "ExpDecay",
     "TimestampDecay",
+    "StackedHistogram",
+    "VoxelGrid",
     "EngineStats",
     "SnapshotMeta",
 }
@@ -96,6 +98,12 @@ def test_kernel_class_parameters(cls: str, params: list[str]) -> None:
     signature = _parameters(getattr(impl, cls))
     assert [name for name, _, _ in signature] == params
     assert all(default is P.empty for _, _, default in signature)
+
+
+@pytest.mark.parametrize("cls", ["StackedHistogram", "VoxelGrid"])
+def test_temporal_kernel_parameters_are_keyword_only_without_defaults(cls: str) -> None:
+    P = inspect.Parameter
+    assert _parameters(getattr(impl, cls)) == [("bins", P.KEYWORD_ONLY, P.empty), ("bin_us", P.KEYWORD_ONLY, P.empty)]
 
 
 @pytest.mark.parametrize("name", ["event_count", "polarity", "time_surface"])

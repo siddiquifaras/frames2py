@@ -39,7 +39,9 @@ class Accumulator:
     representation.
 
     Args:
-        sensor_size: ``(width, height)``. Frames are ``(height, width[, channels])``.
+        sensor_size: ``(width, height)``. Frames are ``(height, width[, channels])``, or
+            time-first for the temporal kernels: ``(bins, height, width)`` for ``VoxelGrid``,
+            ``(2, bins, height, width)`` for ``StackedHistogram``.
         kernel: A kernel instance, or ``"event_count"``, ``"polarity"`` or
             ``"time_surface"``.
     """

@@ -13,7 +13,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from frames2py import Engine, EVENT_DTYPE, ExpDecay, SnapshotMeta, TimestampDecay
+from frames2py import Engine, EVENT_DTYPE, ExpDecay, SnapshotMeta, StackedHistogram, TimestampDecay, VoxelGrid
 from frames2py.publish import Snapshot
 from frames2py.viewer import render
 
@@ -246,6 +246,17 @@ class TestContract:
     def test_other_frames_are_refused(self, frame: np.ndarray) -> None:
         with pytest.raises(TypeError, match="no rendering"):
             render(snap(frame))
+
+    @pytest.mark.parametrize("kernel", [StackedHistogram(bins=1, bin_us=10), VoxelGrid(bins=2, bin_us=10)])
+    @pytest.mark.parametrize("sensor_size", [(2, 3), (3, 2), (5, 4)])
+    def test_temporal_frames_are_refused(self, kernel: Any, sensor_size: tuple[int, int]) -> None:
+        # (bins, H, 2) float32 and (2, 1, H, W) uint32 are not single frames, whatever their sizes.
+        engine = Engine(sensor_size, kernel, snapshot_interval_ms=0.0)
+        engine.ingest(np.array([(15, 0, 0, 1), (25, 1, 1, 0)], dtype=EVENT_DTYPE))
+        snapshot = engine.snapshot()
+        assert snapshot is not None and snapshot.frame.any()
+        with pytest.raises(TypeError, match="no rendering"):
+            render(snapshot)
 
     @pytest.mark.parametrize("value", [None, np.zeros((2, 2), dtype=np.uint32), (np.zeros((2, 2)), None)])
     def test_not_a_snapshot(self, value: Any) -> None:

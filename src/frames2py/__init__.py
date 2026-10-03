@@ -21,7 +21,15 @@ from frames2py._accumulator import Accumulator
 from frames2py._engine import Engine
 from frames2py._events import EVENT_DTYPE
 from frames2py._types import EngineStats, SnapshotMeta
-from frames2py.kernels import EventCount, ExpDecay, Polarity, TimeSurface, TimestampDecay
+from frames2py.kernels import (
+    EventCount,
+    ExpDecay,
+    Polarity,
+    StackedHistogram,
+    TimeSurface,
+    TimestampDecay,
+    VoxelGrid,
+)
 
 __all__ = [
     "Accumulator",
@@ -32,6 +40,8 @@ __all__ = [
     "TimeSurface",
     "ExpDecay",
     "TimestampDecay",
+    "StackedHistogram",
+    "VoxelGrid",
     "EngineStats",
     "SnapshotMeta",
 ]

@@ -36,7 +36,8 @@ class Snapshot:
     needs to modify the data, or hands it to such a library, uses ``copy()``.
 
     Attributes:
-        frame: The published frame, read-only, ``(height, width[, channels])``.
+        frame: The published frame, read-only, ``(height, width[, channels])``; time-first
+            for the temporal kernels, ``(bins, height, width)`` or ``(2, bins, height, width)``.
         meta: The publication's metadata.
     """
 
