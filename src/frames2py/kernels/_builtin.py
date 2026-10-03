@@ -283,7 +283,7 @@ class TimestampDecay:
                 exponent = since / self._tau_us
         else:
             exponent = since / self._tau_us
-        np.add.at(state.stored, _flat_index(events, state.width), np.exp(exponent))
+        np.add.at(state.stored, _flat_index(events, state.width), np.exp(exponent, out=exponent))
 
     def read(self, state: _TimestampDecay, out: NDArray[Any], watermark: int | None) -> None:
         if watermark is None or state.reference is None:

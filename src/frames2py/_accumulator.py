@@ -77,13 +77,15 @@ class Accumulator:
     def _accumulate(self, events: object) -> int:
         """``accumulate``, returning the number of in-bounds events."""
         checked = validate(events)
-        if len(checked) and int(checked["t"].max()) >= TIMESTAMP_LIMIT:
+        latest = int(checked["t"].max()) if len(checked) else 0
+        if latest >= TIMESTAMP_LIMIT:
             raise ValueError("an event has t >= 2**63; the whole call is rejected")
         inside = self._in_bounds(checked)
         self._kernel.begin_call(self._state)
         self._events_out_of_bounds += len(checked) - len(inside)
         if len(inside):
-            latest = int(inside["t"].max())
+            if inside is not checked:  # some events were out of bounds: the maximum may be lower
+                latest = int(inside["t"].max())
             if self._watermark is None or latest > self._watermark:
                 self._watermark = latest
             self._kernel.accumulate(inside, self._state, self._watermark)
