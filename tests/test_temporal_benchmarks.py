@@ -244,3 +244,9 @@ class TestClassification:
         verdicts = json.loads((tmp_path / "gate.json").read_text())
         assert verdicts["suite"] == "temporal-gate" and verdicts["gate"] == "MET"
         assert len(verdicts["cells"]) == 150 and "Gate: MET" in capsys.readouterr().out
+
+    def test_stage_two_measures_the_borderline_temporal_cells(self) -> None:
+        _, engine = _documents()
+        target = temporal_gate_cells()[11]
+        _set_rates(engine, {target.condition: _uniform(21e6)})
+        assert gate.borderline_cells(engine) == [target]
