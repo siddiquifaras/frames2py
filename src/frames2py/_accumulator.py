@@ -111,8 +111,9 @@ class Accumulator:
         self._watermark = None
         self._events_out_of_bounds = 0
 
-    def _read_into(self, out: NDArray[Any]) -> None:
-        self._kernel.read(self._state, out, self._watermark)
+    def _read_into(self, out: NDArray[Any], at: int | None = None) -> None:
+        """Read the representation into *out*, at the watermark or the later time *at*."""
+        self._kernel.read(self._state, out, self._watermark if at is None else at)
 
     def _close_window(self) -> None:
         self._kernel.close_window(self._state)

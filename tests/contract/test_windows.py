@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import itertools
 from collections.abc import Iterator
 from typing import Any
 
@@ -143,7 +144,7 @@ def test_a_batch_with_a_timestamp_at_2_63_yields_none_of_its_frames() -> None:
     second = array([(25, 0, 0, 1), (TIMESTAMP_LIMIT, 0, 0, 1)])
     frames = []
     with pytest.raises(ValueError):
-        for item in windows([first, second], SENSOR, impl.EventCount(), every_us=10):
+        for item in itertools.islice(windows([first, second], SENSOR, impl.EventCount(), every_us=10), 100):
             frames.append(item)
     assert [t for t, _ in frames] == [10]  # 20 would be completed by the second batch
 

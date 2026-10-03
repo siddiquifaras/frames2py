@@ -49,7 +49,9 @@ class Kernel(Protocol):
 
         Since 1.1, ``read`` may be given a time later than the accumulated watermark.
         A kernel written for 1.0, which assumed it always received exactly the
-        accumulated watermark, may need adapting.
+        accumulated watermark, may need adapting. ``frames2py.replay.windows()`` passes
+        each frame's boundary, later than every event accumulated, and requires a kernel
+        that evaluates its representation at the time it is given.
         """
         ...
 

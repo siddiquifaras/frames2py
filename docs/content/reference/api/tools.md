@@ -15,3 +15,5 @@
 ::: frames2py.viewer.run
 
 ::: frames2py.replay.paced
+
+::: frames2py.replay.windows
