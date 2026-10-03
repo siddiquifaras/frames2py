@@ -166,9 +166,15 @@ def test_windows_over_a_reader_equals_windows_over_its_events_in_one_batch() -> 
         size = reader.sensor_size
         assert size is not None
         whole = np.concatenate([b.copy() for b in reader])
+    frames = nonempty = 0
     with evt.open(DATA / "active_marker_head.evt3.raw") as reader:
-        read = list(windows(reader, size, StackedHistogram(bins=3, bin_us=500), every_us=1_000))
-    expected = list(windows([whole], size, StackedHistogram(bins=3, bin_us=500), every_us=1_000))
-    assert [t for t, _ in read] == [t for t, _ in expected] and len(read) > 1
-    assert any(frame.any() for _, frame in read)
-    assert all(np.array_equal(a, b) for (_, a), (_, b) in zip(read, expected))
+        # Frame by frame: at 1280x720 each frame is 22 MB, too many to hold at once.
+        for (t_read, read), (t_whole, expected) in zip(
+            windows(reader, size, StackedHistogram(bins=3, bin_us=500), every_us=1_000),
+            windows([whole], size, StackedHistogram(bins=3, bin_us=500), every_us=1_000),
+            strict=True,
+        ):
+            assert t_read == t_whole and np.array_equal(read, expected)
+            frames += 1
+            nonempty += bool(read.any())
+    assert frames > 1 and nonempty
