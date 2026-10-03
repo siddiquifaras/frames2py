@@ -22,8 +22,9 @@ than there are; it sees the same one again (same `sequence`).
 
 `engine.snapshot()` returns a `frames2py.publish.Snapshot`, or `None`:
 
-- **`frame`**: the published array, `(height, width)` or `(height, width, 2)`, with the
-  kernel's output dtype. It is the published array itself, not a copy, shared by every
+- **`frame`**: the published array, `(height, width)` or `(height, width, 2)`, or
+  time-first for the [temporal kernels](kernels.md#temporal-kernels), with the kernel's
+  output dtype. It is the published array itself, not a copy, shared by every
   consumer that reads this publication, and marked read-only. Frames2Py never writes it
   again: the next publication goes into a new array.
 - **`meta`**: its `SnapshotMeta`, with `watermark` (the largest accumulated in-bounds

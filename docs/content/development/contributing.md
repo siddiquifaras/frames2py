@@ -6,7 +6,7 @@ are welcome there.
 
 ## Before you start
 
-- **Scope.** Frames2Py is live, decoupled observation of event-camera state: the core, five
+- **Scope.** Frames2Py is live, decoupled observation of event-camera state: the core, seven
   kernels, file adapters at the `EVENT_DTYPE` boundary, a recorder, replay and a small viewer.
   It is not a camera SDK, a format-conversion toolkit, an ML framework or a general stream
   processor. Features outside that scope are better proposed first as an issue.

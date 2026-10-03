@@ -75,8 +75,9 @@ shape, which are fixed per kernel:
 | `(H, W, 2)` uint32 | `polarity` | OFF (channel 0) in blue, ON (channel 1) in yellow (red + green), both white; each channel `floor(255 * min(v, s) / s)` |
 | `(H, W)` uint64 | `time_surface` | grey: `floor(255 * max(0, 1 - (T - v) / window_us))`, `T` the snapshot's watermark; `v == 0` black |
 
-Anything else (a custom kernel's frame of another dtype or shape) raises `TypeError`; the
-viewer doesn't guess.
+Anything else raises `TypeError`; the viewer doesn't guess. That includes the
+[temporal kernels'](../core/kernels.md#temporal-kernels) time-first frames, which are not
+single images, and a custom kernel's frame of another dtype or shape.
 
 ```python title="render.py"
 --8<-- "render.py"

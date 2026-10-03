@@ -1,0 +1,6 @@
+frame at 10 µs: count 1
+frame at 20 µs: count 2
+frame at 30 µs: count 1
+frame at 40 µs: count 0
+frame at 50 µs: count 0
+frame at 60 µs: count 0

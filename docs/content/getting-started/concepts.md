@@ -8,16 +8,17 @@ The vocabulary the rest of the documentation uses.
 
 **Sensor size and frame shape.** `sensor_size` is always `(width, height)`. The arrays
 Frames2Py produces are `(height, width)`, or `(height, width, channels)`: row `y`, column
-`x`, with `(0, 0)` at the top left.
+`x`, with `(0, 0)` at the top left. The two temporal kernels put time first: `(bins, height,
+width)` and `(2, bins, height, width)`.
 
 **Kernel.** The representation events accumulate into, one value (or one per channel) per
-pixel. Frames2Py ships [five](../core/kernels.md). A kernel is either:
+pixel. Frames2Py ships [seven](../core/kernels.md). A kernel is either:
 
 - **windowed**: publication starts a new window, so each snapshot shows only the events
   since the previous one (`event_count`, `polarity`); or
 - **running**: publication leaves the state alone, so each snapshot shows everything
   accumulated since construction or `reset()` (`time_surface`, `exp_decay`,
-  `timestamp_decay`).
+  `timestamp_decay`, `stacked_histogram`, `voxel_grid`).
 
 **Accumulator.** Events in, representation out, synchronously, through one kernel. It
 validates each call, checks the timestamp range and the sensor bounds, keeps the watermark

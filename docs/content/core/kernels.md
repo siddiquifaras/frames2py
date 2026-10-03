@@ -1,8 +1,10 @@
 # Kernels
 
-A kernel defines what the events accumulate into. Frames2Py ships five. Their output shapes
-and dtypes are part of the public API; how each stores its state internally is its own
-business and may differ.
+A kernel defines what the events accumulate into. Frames2Py ships seven: five whose output is
+one image-shaped frame, and two [temporal kernels](#temporal-kernels) whose output keeps time
+bins, for models and other consumers of temporal representations. Their output shapes and
+dtypes are part of the public API; how each stores its state internally is its own business
+and may differ.
 
 | kernel | construct with | output | mode | each in-bounds event |
 |---|---|---|---|---|
@@ -11,6 +13,8 @@ business and may differ.
 | [`TimeSurface`](#timesurface) | `"time_surface"` or `TimeSurface()` | `(H, W)` uint64 | running | keeps the largest `t` at its pixel |
 | [`ExpDecay`](#expdecay) | `ExpDecay(decay)` | `(H, W)` float32 | running | adds 1; the surface decays once per call |
 | [`TimestampDecay`](#timestampdecay) | `TimestampDecay(tau_us)` | `(H, W)` float32 | running | adds a weight that decays with event time |
+| [`StackedHistogram`](#stackedhistogram) | `StackedHistogram(bins=..., bin_us=...)` | `(2, bins, H, W)` uint32 | running | adds 1 in its time bin and polarity channel |
+| [`VoxelGrid`](#voxelgrid) | `VoxelGrid(bins=..., bin_us=...)` | `(bins, H, W)` float32 | running | adds +1 (ON) or -1 (OFF), split linearly between the two nearest knots in time |
 
 `H, W` are the sensor's height and width. The classes are importable from `frames2py` and
 from `frames2py.kernels`; the three names work wherever a kernel is accepted. Pass an
@@ -120,6 +124,141 @@ polarity.
   `FloatingPointError` inside the call. Other kernels are not checked under such settings
   either.
 
+## Temporal kernels
+
+`StackedHistogram` and `VoxelGrid` keep the recent past in time bins, time-first: `(2, bins,
+H, W)` and `(bins, H, W)`. They are the two temporal representations event-vision models
+commonly consume: RVT's per-polarity histogram, and the signed linear voxel grid of E2VID and
+E-RAFT. Both are running kernels, constructed with keyword arguments only:
+
+- **`bins`**, the number of output channels along time: an int, at least 1 for
+  `StackedHistogram` and at least 2 for `VoxelGrid`, with no upper bound;
+- **`bin_us`**, the bin width in µs: an int with `1 <= bin_us < 2**28`.
+
+Integers of any type are accepted (`operator.index`, so NumPy integers too). A bool, a float,
+a string or anything else, or a value out of range, raises `ValueError`. Neither kernel has
+a name string; pass an instance.
+
+```python title="temporal_kernels.py"
+--8<-- "temporal_kernels.py"
+```
+
+```text title="Output"
+--8<-- "temporal_kernels.out"
+```
+
+### Bins on the event-time grid
+
+Bin `k` covers `[k * bin_us, (k + 1) * bin_us)` of absolute event time, half-open, worked
+out in integer arithmetic. Events with equal timestamps always share a bin. The grid doesn't
+depend on the events: the first event doesn't start it.
+
+A frame read at the [watermark](event-contract.md#the-watermark) `T` shows **only completed
+bins**, the bins before `T // bin_us`. The bin `T` falls in is still being filled and is
+never shown, so a frame ends at the start of that bin. In the example the watermark is 31,
+so the frame ends at 30: the event at 31 isn't shown, and neither would one at exactly 30.
+
+- **A stream that pauses** keeps its newest bin hidden until an event crosses the next bin
+  edge. Publication and `stop()` don't move the watermark, so they don't show it either.
+- **Late events count** if their bin is still shown: these are running kernels, and the
+  result doesn't depend on arrival order. Events older than the frame count for nothing, and
+  never will, because the watermark never goes back.
+- **Zeros** everywhere before the first in-bounds event, in empty bins, and in bins before
+  t = 0. Never NaN.
+- **Out-of-bounds events** are counted by the Accumulator or Engine as for every kernel, and
+  change nothing in the frame.
+- **Order and batching don't matter**, exactly: the same events give the same frame, bit for
+  bit, in any order and split into calls in any way.
+- **`reset()`** clears every bin. An Engine's snapshot sequence carries on as usual.
+- **Timestamps near 2^63:** no special case. The bin that holds `2**63 - 1` can never
+  complete, so it is never shown.
+
+No normalisation is applied. Models trained on normalised input (E2VID and E-RAFT normalise
+their voxel grids; RVT clips its histogram) need that step applied to a copy of the frame.
+
+**At a window's closing time Frames2Py differs from E2VID, E-RAFT and RVT.** Their code puts
+an event at exactly the window's end on its last knot or bin. Here the bins are half-open,
+so that event belongs to the next bin, the convention of DSEC's event slicer
+(`t_start <= t < t_end`). With events at that time left out, the values match those
+implementations' code, up to their own float32 rounding: a one-off cross-check on small random
+inputs, not part of the test suite.
+
+### StackedHistogram
+
+`(2, bins, H, W)` uint32: events per polarity and time bin. Index `j` is grid bin
+`T // bin_us - bins + j`, so `j = 0` is the oldest bin and the frame covers `bins * bin_us`
+µs. Channel 0 counts OFF events (`p == 0`), channel 1 ON events (any other `p`), as in
+`Polarity`.
+
+**Counts are unclipped uint32 and wrap modulo 2^32**, like `EventCount`'s. RVT clips its
+histogram at 10 and stores uint8, `(2 * bins, H, W)`. To give an RVT model its exact input,
+convert a copy:
+
+```python
+import numpy as np
+
+frame = np.zeros((2, 10, 260, 346), dtype=np.uint32)  # e.g. snapshot.frame, bins=10
+rvt_input = np.minimum(frame, 10).astype(np.uint8).reshape(2 * 10, 260, 346)
+print(rvt_input.shape, rvt_input.dtype)
+```
+
+```text title="Output"
+(20, 260, 346) uint8
+```
+
+### VoxelGrid
+
+`(bins, H, W)` float32: signed events, spread linearly in time over `bins` knots.
+
+- **Knots.** Knot `j` sits at time `(T // bin_us - bins + 1 + j) * bin_us`, oldest first, so
+  the last knot is at the start of the bin in progress. The frame covers the `bins - 1`
+  completed bins between the first and last knots: `(bins - 1) * bin_us` µs. That is one bin
+  less than a `StackedHistogram` with the same `bins` shows.
+- **Weights.** An event in that span at `t = q * bin_us + r` adds `s * (bin_us - r) / bin_us`
+  to the knot at `q * bin_us` and `s * r / bin_us` to the next one, with `s = +1` for ON
+  (`p != 0`) and `-1` for OFF (`p == 0`). Each event contributes 1 in total, ON and OFF
+  cancel exactly, and an event on a knot goes wholly to it. The edge knots are one-sided: the
+  first takes only events after it, the last only events before it. This is E2VID's
+  interpolation with the window's first and last times fixed at the first and last knots.
+- **Exact numerators.** Each knot's value is an integer numerator `N`, the sum of its
+  `s * (bin_us - r)` and `s * r` terms, divided by `bin_us`. `N` is kept exactly, modulo
+  2^64, and read as a signed 64-bit integer `n`: `n == N` while `-2**63 <= N <= 2**63 - 1`,
+  and it wraps beyond. Modular arithmetic is what keeps order and batching exactly
+  irrelevant. Each event moves a numerator by at most `bin_us`, so wrapping takes more than
+  `2**63 / bin_us` events at one pixel within two bins: about 9.2e14 at `bin_us = 10_000`.
+- **Rounding.** The output is `float32(float64(n) / float64(bin_us))`, the float32 nearest
+  the exact quotient whenever `|N| <= 2**53`. Beyond that it can differ from correct
+  rounding. That bound is on the numerator; the `bin_us < 2**28` bound doesn't imply it.
+
+### Memory
+
+Sizes in bytes, for an `H x W` sensor:
+
+| kernel | state | each published frame |
+|---|---|---|
+| `StackedHistogram` | `2 * (bins + 1) * H * W * 4` | `2 * bins * H * W * 4` |
+| `VoxelGrid` | `2 * bins * H * W * 8` | `bins * H * W * 4` |
+
+At 1280x720: `StackedHistogram(bins=10, ...)` keeps 77.3 MiB of state and publishes 70.3
+MiB frames; `VoxelGrid(bins=5, ...)` keeps 70.3 MiB and publishes 17.6 MiB frames. An Engine
+allocates a new frame for every publication, and the frames consumers still hold stay
+alive. The state has one set of planes per bin a later read can still show; when the
+watermark enters a new bin, the planes of the bin it entered are zeroed, work proportional
+to `H x W` per bin entered.
+
+`bins` has no upper limit. Frames2Py doesn't promise to allocate eagerly: depending on the
+platform, a large state can be created successfully and raise `MemoryError` later, when its
+memory is first used. Sizes NumPy itself refuses fail at construction.
+
+Throughput of these two kernels hasn't been measured yet; the
+[Performance](../reference/performance.md) page covers the five kernels above.
+
+### Viewing and offline frames
+
+[`viewer.render()`](../consumers/viewer.md) draws single frames only: a temporal frame raises
+`TypeError`. To turn a recording into a frame every N µs of event time, for training or
+evaluation, use [`frames2py.replay.windows()`](../data/replay.md#frames-in-event-time).
+
 ## Custom kernels
 
 `Accumulator` and `Engine` accept any object that implements the
@@ -127,8 +266,8 @@ polarity.
 `init_state`, `begin_call`, `accumulate(events, state, watermark)`,
 `read(state, out, watermark)`, `close_window` and `reset`. The Accumulator keeps
 validation, the range and bounds checks and the watermark; a kernel only sees a call's
-in-bounds events. It is a protocol to implement, not a plugin system; the five kernels above
-are the only ones Frames2Py ships.
+in-bounds events. It is a protocol to implement, not a plugin system; the seven kernels
+above are the only ones Frames2Py ships.
 
 **The watermark argument.** `accumulate()` receives the watermark including the call's
 events: the largest timestamp among accumulated in-bounds events. `read()` receives the
@@ -136,11 +275,12 @@ time at which to evaluate the representation: the latest accumulated watermark, 
 time. Both get `None` before the first in-bounds event.
 
 - `Accumulator` and `Engine` always pass the accumulated watermark to `read()`.
-- A later time comes from callers that evaluate a kernel at a chosen time. The offline
-  windows helper planned for 1.1, not available yet, will read at frame boundaries, so it
-  will need this.
+- A later time comes from callers that evaluate a kernel at a chosen time.
+  [`frames2py.replay.windows()`](../data/replay.md#frames-in-event-time) reads each frame at
+  its boundary, later than every event accumulated, so it needs a kernel that evaluates at
+  the time it is given.
 - `read()` must never change the kernel's state, whatever time it is given.
-- The five built-in kernels meet these rules.
+- The seven built-in kernels meet these rules.
 
 **Changed in 1.1.** In 1.0, `read()` only ever received the accumulated watermark. A
 kernel that relied on that may need adapting before it is used with a caller that reads at

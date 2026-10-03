@@ -24,7 +24,7 @@ Nothing flows from a consumer back to the producer.
 |---|---|
 | **Accumulator** (`frames2py.Accumulator`) | Accumulation through one kernel: structural validation, the timestamp-range check, the bounds check, the watermark, the out-of-bounds count, the kernel's state. Synchronous; no threads, no publication. |
 | **Engine** (`frames2py.Engine`) | An Accumulator (internal, not exposed), the publication cadence, the published snapshot, the lifecycle (`start`, `stop`, `reset`), producer ownership and statistics. |
-| **Kernel** (`frames2py.kernels.Kernel`) | The representation: how in-bounds events change the state, how the state is read out, what happens at a window boundary. A public protocol; the five built-in kernels implement it and so can yours. |
+| **Kernel** (`frames2py.kernels.Kernel`) | The representation: how in-bounds events change the state, how the state is read out, what happens at a window boundary. A public protocol; the seven built-in kernels implement it and so can yours. |
 | **Snapshot publisher** (`frames2py.publish.ImmutablePublisher`) | The hand-off between the producer and consumers: each publication is a new buffer, stored with its metadata as one `Snapshot`. |
 
 ## The ingest path

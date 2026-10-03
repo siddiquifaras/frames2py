@@ -18,9 +18,10 @@ Without the extras, the adapter, recorder and viewer tests that need a backend s
 | path | what it checks |
 |---|---|
 | `tests/contract/` | the behavioural contract of the core: event validation, bounds and watermark, every kernel against an independent reference, publication cadence, snapshots, lifecycle, stats accounting, threads and bounded interleavings |
-| `tests/oracle.py` | the independent reference model of the five kernels, a plain per-event Python loop, and its own tests (`tests/test_oracle.py`) |
+| `tests/oracle.py` | the independent reference model of the five single-frame kernels, a plain per-event Python loop, and its own tests (`tests/test_oracle.py`) |
+| `tests/temporal_oracle.py`, `tests/temporal_cases.py` | the independent reference model of the two temporal kernels and of `replay.windows()`, a per-event log with exact integer and `Fraction` arithmetic; hand-computed cases; their tests (`tests/test_temporal_oracle.py`) |
 | `tests/adapters/` | the EVT, AEDAT 4.0 and HDF5 adapters, against committed fixtures, crafted byte streams and OpenEB 5.2.0's recorded output (`tests/data/evt_golden/`) |
-| `tests/recorder/`, `tests/viewer/`, `tests/test_replay.py` | the recorder, the renderer and viewer loop, and paced replay |
+| `tests/recorder/`, `tests/viewer/`, `tests/test_replay.py` | the recorder, the renderer and viewer loop, paced replay, and `windows()` over a reader |
 | `tests/test_docs.py` | the documentation: runnable examples and their output, the README quickstart, the API reference against the public API |
 | `tests/test_examples.py` | the programs in `examples/` |
 | `tests/test_benchmarks.py`, `tests/test_consumer_benchmarks.py` | the benchmark harness itself, not performance |

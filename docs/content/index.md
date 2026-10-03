@@ -32,8 +32,9 @@ consumers
   consumers call `snapshot()` and read `stats`.
 - **[`Accumulator`](core/accumulator.md)**: the same accumulation without publication, for
   synchronous use: offline processing, tests, your own loop.
-- **[Five kernels](core/kernels.md)**: event counts, per-polarity counts, a time surface,
-  a per-call exponential decay and an event-time exponential decay.
+- **[Seven kernels](core/kernels.md)**: event counts, per-polarity counts, a time surface,
+  a per-call exponential decay, an event-time exponential decay, and two temporal kernels
+  for models: a per-polarity histogram over time bins and a voxel grid.
 - **[Snapshots](core/snapshots.md)**: each publication is a frame and its metadata, shared
   by every consumer and never written again.
 - **[File adapters](data/adapters.md)** for EVT 2.0 / 3.0 (Prophesee RAW), AEDAT 4.0 and
