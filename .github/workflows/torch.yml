@@ -1,0 +1,114 @@
+name: Torch recipe
+
+# The PyTorch consumer recipe (docs/content/consumers/pytorch.md): its tests and its docs snippet,
+# against the CPU build of one pinned torch release. Separate from ci.yml, whose jobs never install
+# torch. torch is not a dependency, an extra or a dependency group of frames2py, and is not in uv.lock.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: torch-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.20"
+  UV_PYTHON_PREFERENCE: only-managed
+  TORCH_VERSION: "2.14.1"
+  TORCH_INDEX: https://download.pytorch.org/whl/cpu
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  build:
+    name: build the wheel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv build --no-cache --wheel --out-dir dist
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: torch-dist
+          path: dist/
+          if-no-files-found: error
+
+  recipe:
+    name: recipe (${{ matrix.os }}, ${{ matrix.python }}, torch CPU)
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+        python: ["3.11", "3.14t"]
+    env:
+      FRAMES2PY_REQUIRE_TORCH: "1"
+    steps:
+      - run: echo "PY=$RUNNER_TEMP/venv/bin/python" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: torch-dist
+          path: dist
+      - name: Install the wheel with its locked NumPy and the test tools into a fresh environment
+        run: |
+          uv python install "${{ matrix.python }}"
+          uv venv --python "${{ matrix.python }}" "$RUNNER_TEMP/venv"
+          uv export --frozen --no-default-groups --group test --no-emit-project --no-hashes \
+            -o "$RUNNER_TEMP/requirements.txt"
+          uv pip install --python "$PY" -r "$RUNNER_TEMP/requirements.txt" "$(ls dist/*.whl)"
+      - name: Install the pinned torch from PyTorch's CPU index only
+        run: |
+          uv pip install --python "$PY" --index-url "$TORCH_INDEX" "torch==$TORCH_VERSION"
+          uv pip freeze --python "$PY"
+          "$PY" - <<'EOF'
+          import os, sys, torch
+          print(sys.version, "torch", torch.__version__, "CUDA", torch.version.cuda)
+          assert torch.__version__.split("+")[0] == os.environ["TORCH_VERSION"], torch.__version__
+          assert torch.version.cuda is None, "a CUDA build of torch was installed"
+          EOF
+      - name: Check the GIL stays disabled with NumPy, frames2py and torch loaded
+        if: endsWith(matrix.python, 't')
+        run: |
+          "$PY" - <<'EOF'
+          import sys
+          import numpy, frames2py, torch
+          print(sys.version, "GIL enabled:", sys._is_gil_enabled())
+          assert not sys._is_gil_enabled(), "the GIL is enabled"
+          EOF
+      - name: Run the recipe's tests and its docs snippet against the installed wheel
+        run: |
+          mkdir -p junit
+          "$PY" -m pytest -q -p no:cacheprovider --junitxml=junit/junit.xml tests/test_torch_recipe.py \
+            "tests/test_docs.py::test_snippet_prints_its_documented_output[torch_handoff.py]"
+      - name: Check the JUnit report
+        run: |
+          gil=enabled; [[ "${{ matrix.python }}" == *t ]] && gil=disabled
+          "$PY" .github/scripts/check_junit.py junit/junit.xml --installed --gil "$gil" \
+            --forbid-skip "torch is not installed" \
+            --ran "tests.test_docs::test_snippet_prints_its_documented_output[torch_handoff.py]" \
+            --ran "tests.test_torch_recipe::test_importing_frames2py_and_its_public_modules_imports_no_torch"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-torch-${{ matrix.os }}-py${{ matrix.python }}
+          path: junit/
+          if-no-files-found: warn

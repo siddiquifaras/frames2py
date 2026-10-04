@@ -49,6 +49,7 @@ memory-safety boundary: code can set the flag back on the owning array, and libr
 ignore it (`torch.from_numpy`, for one) share the memory writably. Frames2Py never writes a
 published frame; if your consumer modifies the data, or hands it to such a library, give it
 `snapshot.copy()` or `snapshot.copy(out=...)` instead.
+[Handing snapshots to PyTorch](../consumers/pytorch.md) shows the copy-first recipe.
 
 `copy(out=...)` fills an array you own, for consumers that want to avoid an allocation per
 read. `out` must be an `ndarray` with exactly the frame's shape and dtype (byte order

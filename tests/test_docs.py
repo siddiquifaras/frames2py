@@ -30,6 +30,7 @@ import pytest
 
 import frames2py
 from tests.adapters.backends import require_backend
+from tests.torch_support import require_torch
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTENT = ROOT / "docs" / "content"
@@ -144,8 +145,11 @@ def test_every_snippet_is_shown_with_its_output() -> None:
 @pytest.mark.parametrize("snippet", sorted(p.name for p in SNIPPETS.glob("*.py")))
 def test_snippet_prints_its_documented_output(snippet: str, tmp_path: Path) -> None:
     source = (SNIPPETS / snippet).read_text()
-    for extra in re.findall(r"frames2py\[(\w+)\]", source.split("\n\n", 1)[0]):
+    header = source.split("\n\n", 1)[0]
+    for extra in re.findall(r"frames2py\[(\w+)\]", header):
         require_backend(*BACKENDS.get(extra, ()))
+    if "Needs PyTorch" in header:
+        require_torch()
     expected = (SNIPPETS / snippet.replace(".py", ".out")).read_text()
     assert run_python(source, fixture_directory(tmp_path)) == expected
 

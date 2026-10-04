@@ -27,7 +27,7 @@ second algorithm that works on the accumulated state. It needs no registration: 
 5. **Copy before you modify.** `snapshot.frame` is shared with every other consumer and
    read-only. Use `snapshot.copy()` (or `copy(out=...)` into a buffer you keep) before
    writing to the data or handing it to a library that ignores NumPy's read-only flag, such
-   as `torch.from_numpy`.
+   as `torch.from_numpy` ([Handing snapshots to PyTorch](pytorch.md)).
 
 ## What a consumer gets, and doesn't
 

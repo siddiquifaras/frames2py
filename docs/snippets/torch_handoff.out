@@ -1,0 +1,6 @@
+counts: (3, 4) torch.uint32
+published frame unchanged: True
+voxels: (3, 3, 4) torch.float32 -> features: (1, 8, 3, 4)
+histogram: (2, 3, 3, 4) torch.uint32 -> channels: (1, 6, 3, 4) torch.float32
+window total: 2
+window total: 4

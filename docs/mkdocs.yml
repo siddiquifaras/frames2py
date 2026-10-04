@@ -108,6 +108,7 @@ nav:
   - Consumers:
       - Viewer: consumers/viewer.md
       - Writing a consumer: consumers/writing-a-consumer.md
+      - PyTorch: consumers/pytorch.md
   - Reference:
       - API:
           - Core: reference/api/core.md
