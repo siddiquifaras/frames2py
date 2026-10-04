@@ -112,3 +112,39 @@ The minimum versions above were tested too, on CPython 3.11, in the NumPy floor 
   3.11 and 3.14t. On macOS, CI tests the renderer, which needs no window, but opens no
   window. `viewer.run()` must be called on the main thread on every platform; it raises
   `RuntimeError` otherwise.
+
+## Known limitations
+
+What Frames2Py 1.1 doesn't do or doesn't support, in one place. Each item links to the
+details.
+
+- **Windows is not supported** and not tested, and neither is Intel macOS
+  ([Core package](#core-package)).
+- **No live camera adapters.** Frames2Py ships file adapters only; a camera enters through
+  your vendor SDK's buffers converted to `EVENT_DTYPE` and passed to `ingest()`
+  ([Adapters](../data/adapters.md)).
+- **No cross-process snapshots.** Consumers are threads in the producer's process; another
+  process can't read an Engine's snapshots.
+- **Performance figures come from one machine,** an Apple M4. No x86_64, Linux or edge
+  device throughput has been measured, and CI measures none
+  ([Performance](performance.md)).
+- **The temporal kernels miss 20M events/s in some configurations** through the Engine:
+  12 of their 150 gate cells per runtime in the gate's second run (13 and 15 in its first),
+  all publishing large frames often
+  ([Throughput](../core/kernels.md#throughput)).
+- **Free-threaded CPython is 3.14t only;** 3.14.0 to 3.14.4 have a CPython race that can
+  end the process, so 3.14.5 or later is recommended ([above](#free-threaded-cpython)).
+  CPython 3.15 is not supported yet.
+- **No timer thread.** Publication happens only in `ingest()` and `stop()`: a producer that
+  pauses without `stop()` leaves its pending window unpublished, and a temporal kernel's
+  newest bin hidden ([Engine](../core/engine.md#publication-cadence)).
+- **`time_surface` can't tell an event at `t = 0` from no event**
+  ([Kernels](../core/kernels.md#timesurface)).
+- **The viewer draws single frames only;** temporal frames raise `TypeError`
+  ([Kernels](../core/kernels.md#viewing-and-offline-frames)).
+- **An interrupted producer can strand one waiter.** If Ctrl-C interrupts the producer
+  during a publication, one `wait_for_newer()` call may stay blocked until its timeout
+  ([Snapshots](../core/snapshots.md#waiting-for-a-newer-snapshot)).
+- **NumPy's error modes:** settings that make floating-point underflow raise are not
+  supported while using `TimestampDecay`, and other kernels are not checked under them
+  ([Kernels](../core/kernels.md#timestampdecay)).

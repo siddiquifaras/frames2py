@@ -23,24 +23,27 @@ event stream                 your producer: a camera SDK, a file adapter, your o
     ↓  Engine.ingest()       EVENT_DTYPE arrays, on the producer's thread
 Frames2Py
     ↓
-accumulation / kernel        counts, polarity, time surface, decays
+accumulation / kernel        counts, polarity, time surface, decays, time bins
     ↓
 Engine                       publishes at most once per snapshot_interval_ms
     ↓
 immutable snapshot           a fresh frame + metadata, shared, never written again
     ↓
-independent consumers        engine.snapshot(): any thread, any number
+independent consumers        engine.snapshot() or wait_for_newer(): any thread, any number
 ```
 
 - **`Engine`**: the live runtime. One producer thread calls `ingest()`; consumers call
-  `snapshot()`. `ingest()` does its CPU work on the caller's thread and never waits on a
-  consumer or on I/O.
+  `snapshot()`, or block in `wait_for_newer()` until a newer snapshot is published.
+  `ingest()` does its CPU work on the caller's thread and never waits on a consumer or on
+  I/O.
 - **`Accumulator`**: the same accumulation without publication or threads, for offline
   processing, tests and loops you drive yourself.
 - **Kernels**: `event_count` and `polarity` (windowed counts: each snapshot holds only the
   events since the previous publication), `time_surface` (latest timestamp per pixel),
   `ExpDecay(decay)` (decays once per call) and `TimestampDecay(tau_us)` (decays with event
-  time, independent of how events are batched).
+  time, independent of how events are batched); and two temporal kernels for models,
+  `StackedHistogram(bins=..., bin_us=...)` (per-polarity counts in time bins) and
+  `VoxelGrid(bins=..., bin_us=...)` (a signed linear voxel grid).
 - **Snapshots**: a frame and its metadata (watermark, sequence) from one publication. The
   frame is shared by every consumer and read-only; `snapshot.copy()` gives you your own.
 
@@ -111,17 +114,24 @@ What each extra pulls in, and installing the development version from Git:
 
 - **Recorder**: writes events to HDF5, next to `ingest()` in your loop; the Engine never calls
   it.
-- **Replay**: `frames2py.replay.paced()` yields a recording's batches at their recorded pace.
+- **Replay**: `frames2py.replay.paced()` yields a recording's batches at their recorded pace;
+  `frames2py.replay.windows()` turns a recording into a frame every N µs of event time.
 - **Viewer**: `render()` turns a snapshot into an RGB image; `run()` shows an Engine in a
   window.
 
 Frames2Py ships no vendor SDK adapters: convert your SDK's buffers to `EVENT_DTYPE` and call
 `ingest()`.
 
+**PyTorch** is not a dependency. To hand snapshots to a model, copy them first; the tested
+recipe, with dtypes and devices, is
+[Handing snapshots to PyTorch](https://siddiquifaras.github.io/frames2py/consumers/pytorch/).
+
 ## Performance
 
 On one Apple M4 (16 GB), the v1 performance gate measured all 150 of its cells above 20M
 events/s, on CPython 3.11 and free-threaded 3.14t. No other hardware has been measured.
+The two temporal kernels added in 1.1 have a gate of their own, which they don't meet in
+every cell: see [Throughput](https://siddiquifaras.github.io/frames2py/core/kernels/#throughput).
 
 The cells, the method, the live (paced) figures and the caveats:
 [Performance](https://siddiquifaras.github.io/frames2py/reference/performance/).
@@ -129,8 +139,16 @@ The cells, the method, the live (paced) figures and the caveats:
 ## Python and platforms
 
 CPython 3.11 to 3.14 and free-threaded 3.14t (GIL disabled), on Linux x86_64, Linux ARM64 and
-macOS ARM64, tested in CI (3.12 and 3.13 on Linux x86_64 only). Details:
+macOS ARM64, tested in CI (3.12 and 3.13 on Linux x86_64 only). Windows is not supported.
+Details:
 [Supported Python and platforms](https://siddiquifaras.github.io/frames2py/reference/support/).
+
+## Project status
+
+Stable: the 1.x public API changes only compatibly. Maintained on a best-effort basis.
+Known limitations, among them no Windows support, no live camera adapters, no
+cross-process snapshots and performance figures from one machine, are collected under
+[Known limitations](https://siddiquifaras.github.io/frames2py/reference/support/#known-limitations).
 
 ## Documentation
 
