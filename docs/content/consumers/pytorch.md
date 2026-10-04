@@ -119,7 +119,9 @@ recipe doesn't transpose them:
 
 `.to(device)` is PyTorch's: it copies the tensor to the device when the device differs and
 returns the same tensor when it doesn't. Frames2Py's frames live in CPU memory, and
-Frames2Py makes no GPU claim. The recipe's tests run on CPU in CI; no GPU is tested.
+Frames2Py makes no GPU claim. In CI, the test that a device transfer copies runs where PyTorch
+reports a device: Apple's MPS on the macOS runners. The Linux runners have none and skip it.
+No CUDA device is tested.
 
 ## Tested versions
 
