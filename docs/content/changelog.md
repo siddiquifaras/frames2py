@@ -9,6 +9,88 @@ else on the line (for example "## 1.0.0"). Write links as absolute URLs, because
 is also the GitHub Release text. The tests fail when pyproject.toml's version has no section.
 -->
 
+## 1.1.0
+
+A release that adds to 1.0 without changing what 1.0 code does: waiting for a newer
+snapshot, two temporal representations for event-vision models, frames at fixed steps of
+event time, and a tested recipe for handing snapshots to PyTorch.
+
+```sh
+pip install --upgrade frames2py
+```
+
+### New
+
+- **`Engine.wait_for_newer(sequence, *, timeout=None)`** blocks until a snapshot newer than
+  `sequence` is published and returns the latest one, or `None` on timeout. It returns the
+  latest state, not every publication; `stop()` and `reset()` wake nobody; calling it on the
+  producer's thread raises `RuntimeError`. Each publication releases the waiters registered
+  before it and never waits for one. With no waiter, a preregistered measurement on one
+  machine found no distinguishable cost to `ingest()`; waiters do add work to each
+  publication. Details and figures:
+  [Waiting for a newer snapshot](https://siddiquifaras.github.io/frames2py/core/snapshots/#waiting-for-a-newer-snapshot).
+- **Two temporal kernels**, exported from `frames2py` and `frames2py.kernels`:
+  - `StackedHistogram(bins=..., bin_us=...)`: `(2, bins, H, W)` uint32, events per polarity
+    and time bin, as RVT consumes before its clip;
+  - `VoxelGrid(bins=..., bin_us=...)`: `(bins, H, W)` float32, signed events split linearly
+    between time knots, as in E2VID and E-RAFT.
+
+  Both use bins on an absolute event-time grid and show only completed bins; they count
+  exactly in integers, give the same frame bit for bit whatever the order and batching of
+  the events, and apply no normalisation. They did not reach 20M events/s through the Engine
+  in every cell of their performance gate. Details:
+  [Temporal kernels](https://siddiquifaras.github.io/frames2py/core/kernels/#temporal-kernels), the
+  [semantics table](https://siddiquifaras.github.io/frames2py/core/temporal-semantics/) and
+  [Throughput](https://siddiquifaras.github.io/frames2py/core/kernels/#throughput).
+- **`frames2py.replay.windows(batches, sensor_size, kernel, *, every_us)`** yields a frame
+  every `every_us` µs of event time from a recording's batches, deterministically and
+  independently of how the events are batched. It refuses `ExpDecay`, whose result depends
+  on call boundaries. Details: [Frames in event time](https://siddiquifaras.github.io/frames2py/data/replay/#frames-in-event-time).
+- **A PyTorch recipe**: copy a snapshot, then `torch.from_numpy`, with explicit dtype and
+  device handling, for every kernel. It is documentation tested in its own CI workflow;
+  Frames2Py has no PyTorch dependency, extra or code. Details:
+  [Handing snapshots to PyTorch](https://siddiquifaras.github.io/frames2py/consumers/pytorch/).
+
+### Changed
+
+- **Custom kernels: `read()` may be given a later time.** `Kernel.read(state, out,
+  watermark)` may now receive a time later than the accumulated watermark, and must evaluate
+  the representation at it without changing the state. Only `replay.windows()` does this;
+  `Accumulator` and `Engine` still pass the accumulated watermark, so a custom kernel used
+  through them behaves as in 1.0. The seven built-in kernels follow the rule. Details:
+  [Custom kernels](https://siddiquifaras.github.io/frames2py/core/kernels/#custom-kernels).
+
+### Documentation
+
+- The consumer pattern now waits with `wait_for_newer()`, with polling as the alternative
+  for consumers on their own clock.
+- New: the temporal kernel semantics table, the measured cost of waiting, the results of the
+  v1 observation study (with its scope: one machine, one workload, threads in one process),
+  and a [Known limitations](https://siddiquifaras.github.io/frames2py/reference/support/#known-limitations) section.
+- New data files in `benchmarks/results/`: the temporal-kernel gate's two runs, the
+  `wait_for_newer` measurement and the observation study's per-configuration table.
+
+### Maintenance
+
+- CI also runs once a month on `main`, including a job that installs the newest NumPy,
+  extras and CPython builds instead of the lockfile's.
+
+### Upgrading from 1.0
+
+Nothing needs to change. The event contract, the five 1.0 kernels and their outputs,
+`Accumulator`, `Engine` (`ingest()`, `snapshot()`, `stats`, the cadence and the
+lifecycle), `Snapshot` and the publisher, the adapters, the recorder, `paced()` and the
+viewer behave as in 1.0. The supported Python versions and platforms and the NumPy floor are
+unchanged; [Supported Python and platforms](https://siddiquifaras.github.io/frames2py/reference/support/).
+
+- A custom kernel you want to use with `replay.windows()` must handle a `read()` time later
+  than its own watermark (above).
+- Two internal changes speed up 1.0 paths without changing their results: the Accumulator
+  reuses the timestamp maximum of the range check, and `TimestampDecay` computes its
+  exponentials in place. The v1 performance figures were measured on 1.0's code and not
+  re-measured.
+- Cross-process snapshots are not part of 1.1.
+
 ## 1.0.0
 
 The first stable release. The code is that of 1.0.0rc1, which was installed from PyPI and

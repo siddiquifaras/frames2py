@@ -29,7 +29,8 @@ consumers
 ## What is in the box
 
 - **[`Engine`](core/engine.md)**: the live runtime. One producer thread calls `ingest()`;
-  consumers call `snapshot()` and read `stats`.
+  consumers call `snapshot()` or wait for a newer one with `wait_for_newer()`, and read
+  `stats`.
 - **[`Accumulator`](core/accumulator.md)**: the same accumulation without publication, for
   synchronous use: offline processing, tests, your own loop.
 - **[Seven kernels](core/kernels.md)**: event counts, per-polarity counts, a time surface,
@@ -39,7 +40,10 @@ consumers
   by every consumer and never written again.
 - **[File adapters](data/adapters.md)** for EVT 2.0 / 3.0 (Prophesee RAW), AEDAT 4.0 and
   HDF5; a [recorder](data/recorder.md) that writes events to HDF5; [paced
-  replay](data/replay.md) of recordings; and a small [viewer](consumers/viewer.md).
+  replay](data/replay.md) of recordings and frames at fixed steps of event time; and a small
+  [viewer](consumers/viewer.md).
+- **[A PyTorch recipe](consumers/pytorch.md)** for handing snapshots to models, with
+  explicit copies, dtypes and devices. PyTorch is not a dependency.
 
 The core needs NumPy and nothing else. Adapters, the recorder and the viewer are optional
 extras.
@@ -61,6 +65,8 @@ conversion to the tools that already do them well.
 
 ## Status
 
-Version 1.0.0 (see the [changelog](changelog.md)). The public API described here is stable:
-changing it incompatibly needs a 2.0. Performance figures are measurements on one machine,
-with their conditions: see [Performance](reference/performance.md).
+Version 1.1.0 (see the [changelog](changelog.md)). The public API described here is stable:
+changing it incompatibly needs a 2.0. Frames2Py is maintained on a best-effort basis.
+Performance figures are measurements on one machine, with their conditions: see
+[Performance](reference/performance.md). What it doesn't do or support is collected under
+[Known limitations](reference/support.md#known-limitations).

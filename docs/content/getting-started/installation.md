@@ -57,7 +57,7 @@ print(frames2py.__version__)
 ```
 
 ```text title="Output"
-1.0.0
+1.1.0
 ```
 
 Then run the [quickstart](quickstart.md).
