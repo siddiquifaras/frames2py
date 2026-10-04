@@ -45,8 +45,15 @@ On every push and pull request (`.github/workflows/ci.yml`):
   under `/frames2py/` and every link checked;
 - **py315**: an informational run on the CPython 3.15 pre-release, not required.
 
-A weekly workflow (`recordings.yml`) runs the suite against the real recordings. The
-documentation is deployed to GitHub Pages from `main` by `pages.yml`.
+The same workflow also runs once a month on `main`. That run adds a **latest** job, which
+installs the wheel with its dependencies resolved fresh from PyPI and the newest CPython
+builds, instead of the lockfile's, so new NumPy and Python releases that break Frames2Py
+show up as a failed run.
+
+Separate workflows: `recordings.yml` runs the suite against the real recordings every week,
+and `torch.yml` runs the [PyTorch recipe](../consumers/pytorch.md)'s tests against one pinned
+CPU build of PyTorch on every push, apart from the jobs above, none of which installs
+PyTorch. The documentation is deployed to GitHub Pages from `main` by `pages.yml`.
 
 ## Releases
 
