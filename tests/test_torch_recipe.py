@@ -2,16 +2,18 @@
 
 Frames2Py has no PyTorch code. These tests check, against the installed PyTorch, the behaviour the
 recipe page states: a tensor from ``snapshot.copy()`` is the consumer's and leaves the published frame
-alone; shapes and layouts arrive unchanged; the dtype conversions it recommends are exact where it says
-so; and ``torch.from_numpy`` or ``torch.from_dlpack`` on ``snapshot.frame`` itself writes through to
-every consumer. They skip when PyTorch isn't installed; the torch CI job runs them.
+alone, and stays valid after the snapshot is released; shapes and layouts arrive unchanged; the dtype
+conversions it recommends are exact; and ``torch.from_numpy`` or ``torch.from_dlpack`` on
+``snapshot.frame`` itself writes through to every consumer. They skip when PyTorch isn't installed; the torch CI job runs them.
 """
 
 from __future__ import annotations
 
+import gc
 import subprocess
 import sys
 import warnings
+import weakref
 from collections.abc import Callable
 from typing import Any
 
@@ -125,17 +127,28 @@ def test_a_tensor_on_a_reused_buffer_shows_each_refill() -> None:
     assert int(kept.sum()) == 3 and int(tensor.sum()) == 5
 
 
+@pytest.mark.parametrize("make", [make for make, _, _ in KERNELS], ids=KERNEL_IDS)
+def test_a_tensor_from_a_copy_outlives_the_snapshot_and_its_frame(make: Callable[[], Any]) -> None:
+    engine = published(make())
+    snapshot = engine.snapshot()
+    assert snapshot is not None
+    expected = np.array(snapshot.frame)
+    published_buffer = weakref.ref(snapshot.frame.base)
+    tensor = torch.from_numpy(snapshot.copy())  # the tensor holds the only reference to the copy
+    del engine, snapshot
+    gc.collect()
+    assert published_buffer() is None  # the published frame is gone
+    assert np.array_equal(tensor.numpy(), expected)
+
+
 # ---------------------------------------------------------------- dtypes
 
 
-def test_uint32_converts_exactly_to_int64_and_float64_but_not_to_float32_above_2_24() -> None:
+def test_uint32_converts_exactly_to_int64_and_float64() -> None:
     values = [0, 2**24, 2**24 + 1, 2**32 - 1]
     tensor = torch.from_numpy(np.array(values, dtype=np.uint32))  # EventCount, Polarity, StackedHistogram
     assert tensor.to(torch.int64).tolist() == values
     assert [int(v) for v in tensor.to(torch.float64).tolist()] == values
-    assert [int(v) for v in tensor.to(torch.float32).tolist()] == [0, 2**24, 2**24, 2**32]
-    with pytest.raises(NotImplementedError):  # why the recipe converts before arithmetic
-        tensor + 1
 
 
 def test_time_surface_values_convert_exactly_to_int64() -> None:

@@ -85,10 +85,10 @@ it happens on the producer's thread: conversion is consumer work.
 | `StackedHistogram` | `(2, bins, H, W)` uint32 | `torch.uint32` | `.to(torch.int64)` or a float type |
 | `VoxelGrid` | `(bins, H, W)` float32 | `torch.float32` | none |
 
-**Unsigned integers: convert first.** PyTorch documents only limited support for `uint32`
-and `uint64`: in torch 2.14.1, on CPU, `max()`, addition and ordering comparisons on a
-`uint32` tensor raise `NotImplementedError`, and a convolution refuses one. Convert before
-doing arithmetic:
+**Unsigned integers: convert first.** Most `uint32` arithmetic is unsupported in PyTorch;
+convert first. PyTorch's documentation says unsigned types other than `uint8` "are currently
+planned to only have limited support in eager mode"
+([Tensor Attributes](https://docs.pytorch.org/docs/2.14/tensor_attributes.html), PyTorch 2.14).
 
 - **`.to(torch.int64)`** is exact for every `uint32` count. It is exact for every
   `time_surface` value too, because the event contract rejects timestamps of 2^63 and above.
@@ -97,7 +97,7 @@ doing arithmetic:
   4,294,967,296. Counts that stay below 2^24 convert exactly. Microsecond timestamps pass
   2^24 after about 16.8 seconds, so a time surface converted straight to float32 loses
   precision; subtract a reference time in int64 first if your model wants small floats.
-- **`.to(torch.float64)`** is exact for every `uint32`, and for integers up to 2^53.
+- **`.to(torch.float64)`** is exact for every `uint32`.
 
 Counts wrap modulo 2^32 in Frames2Py ([Kernels](../core/kernels.md)), so a converted count is
 the wrapped value.
@@ -131,7 +131,10 @@ The recipe's tests and the example above run in a separate CI workflow
 - torch **2.14.1**, from PyTorch's CPU wheel index (`https://download.pytorch.org/whl/cpu`;
   on macOS that index serves the standard macOS wheel);
 - CPython **3.11**, and **3.14t** with the GIL disabled, on Linux x86_64, Linux ARM64 and
-  macOS ARM64. On 3.14t the job checks that the GIL stays disabled with PyTorch imported.
+  macOS ARM64.
 
-Other PyTorch versions, CPython 3.12 to 3.14, and GPU builds are not tested. Whether PyTorch
-supports a given Python build is PyTorch's statement; on 3.14t, these tests pass.
+In those 3.14t environments, importing torch 2.14.1 did not re-enable the GIL: the job checks
+the GIL after the import and at the start and end of the test run. That is the whole finding.
+It is not a statement about PyTorch on free-threaded Python in general.
+
+Other PyTorch versions, CPython 3.12 to 3.14, and CUDA builds of PyTorch are not tested.

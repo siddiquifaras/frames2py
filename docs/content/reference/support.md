@@ -28,6 +28,8 @@ The core needs NumPy and nothing else. It is pure Python (a `py3-none-any` wheel
   WebAssembly (Pyodide).
 - **Package index:** releases are published on PyPI as `frames2py`; see
   [Installation](../getting-started/installation.md).
+- **PyTorch** is not a dependency; the PyTorch and Python versions the copy-first recipe is
+  tested with are listed under [Tested versions](../consumers/pytorch.md#tested-versions).
 
 ## Free-threaded CPython
 
