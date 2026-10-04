@@ -119,8 +119,9 @@ gate's full sequence for both runtimes.
 
 **The first run** (2026-10-03, commit `4d5a9f3`) is the gate's result for these kernels:
 **not met**. On 3.11.14 137 cells passed and 13 missed; on 3.14.2t 135 passed and 15 missed.
-Every cell passed at kernel level; every miss was at Engine level. The machine was prepared as
-the preregistration requires.
+Every cell passed at kernel level; every miss was at Engine level. The machine was prepared by
+its owner. Recorded checks: every run on AC power with Low Power Mode off at its start and end;
+every result document in the sleep guard, with no sleep and full wake at its start and end.
 
 **The second run** (2026-10-03, commit `8131aca`) measured the kernels after performance
 changes made following the first run. It is a later measurement recorded
@@ -191,8 +192,9 @@ another machine is a measurement of that machine, not a re-run of the gate. The 
 numbers are still comparable with the CSV.
 
 To measure a subset, `run` takes `--kernel`, `--resolution WxH`, `--batch-size`, `--interval`
-and `--distribution`, each repeatable. The other suites are `adapters`, `recorder`, `viewer`
-and `replay` (`uv run python -m benchmarks --help`).
+and `--distribution`, each repeatable. The suites `run` and `list` take are `gate`,
+`temporal-gate` and `prototype-baseline`. `adapters`, `recorder`, `viewer` and `replay` are
+separate characterisation commands, not suites (`uv run python -m benchmarks --help`).
 
 ## Hygiene that mattered
 
