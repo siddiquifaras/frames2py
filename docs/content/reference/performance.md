@@ -11,7 +11,7 @@ cell: see [Throughput](../core/kernels.md#throughput) on the kernels page.
 
 ## The v1 performance gate
 
-The gate asks whether the five kernels and `Engine.ingest()` sustain at least **20 million
+The gate asks whether the five 1.0 kernels and `Engine.ingest()` sustain at least **20 million
 events per second** across a fixed matrix of conditions:
 
 | dimension | values |
@@ -76,7 +76,7 @@ one published frame.
 
 ## Live: fed at 20M events/s
 
-The same machine and runtimes, 1280x720 uniform events, all five kernels at the five gate
+The same machine and runtimes, 1280x720 uniform events, all five 1.0 kernels at the five gate
 conditions, on the real clock: the producer released each batch at the moment a 20M events/s
 stream would deliver it, for 10 s.
 
@@ -110,6 +110,65 @@ cadence and touched every pixel (`frame.max()`), 3 runs per runtime:
 
 The reader-free measurement always ran first in each process, so run order and the reader's
 effect can't be fully separated. The [viewer's](#viewer) effect on a live producer is below.
+
+## Consumers under load: the v1 observation study
+
+A preregistered study of Frames2Py 1.0.0 asked how a producer and its consumers fare when
+the consumers are slow, compared with other ways of building the same thing in one
+process: consumers called inline by the producer; a queue of finished frames per consumer
+(blocking, dropping the oldest, or unbounded); a shared frame copied under a lock; a
+reference swapped under a lock; raw batches fanned out to consumers that accumulate their
+own state. Its method is on
+[Benchmark methodology](methodology.md#the-v1-observation-study).
+
+**Its results hold for its conditions only:** one machine (the M4 above); synthetic uniform
+events at 1280x720 in 100k-event batches, offered at 20M events/s on the real clock;
+`event_count` with a 16 ms interval; producer and consumers as threads of one process;
+CPython 3.11.14 and CPython 3.14.2t with the GIL disabled, NumPy 2.4.6; 1 or 4 consumers,
+each rendering every state it got (`viewer.render()`), sleeping 30 ms with the state held,
+or doing 250 ms of pure-Python work; 5 runs per configuration. Frames2Py's consumers polled
+`snapshot()` every 16 ms: 1.0.0 had no `wait_for_newer()`. Nothing here says how other
+hardware, kernels, resolutions, rates, recordings or consumers would behave, or how
+consumers in another process would: Frames2Py 1.1 has no cross-process snapshots, and the
+study measured none.
+
+- **Frames2Py kept the producer at 20M events/s** with rendering and sleeping consumers, 1
+  or 4 of them, on both runtimes, and with the 250 ms pure-Python consumers on 3.14.2t. Its
+  consumers' freshness p95 was 16.3-20.2 ms in those cells, and memory grew by at most 0.23
+  MiB/s, inside the study's 0.5 MiB/s bound for bounded memory. A slow
+  consumer observed less often (about 4 times a second with 250 ms of work), not older
+  state.
+- **The two lock-based latest-state designs** behaved the same way, with freshness p95 of
+  18.0-20.7 ms where the producer kept up.
+- **Queues traded the producer or freshness for completeness.** With consumers slower than
+  the 16 ms cadence, blocking queues held the producer to the consumers' pace (freshness
+  p95 175 ms to 5.1 s); with unbounded queues, where the producer kept up, the state
+  consumers saw grew seconds old (p95 6 to 14 s) and memory grew to as much as 2,570 MiB;
+  dropping the oldest item kept freshness p95 at about 80 ms where the producer kept up.
+- **Inline consumers** saw state under 1 ms old when one rendering consumer fitted inside
+  the cadence, and stopped the producer from keeping up in every other configuration.
+- **Pure-Python consumers on CPython 3.11.14** stopped every design from keeping up,
+  Frames2Py included: the latest-state designs ingested 1.5-5.7% of the offered events with
+  250 ms consumers holding the GIL. On 3.14.2t with the GIL disabled, Frames2Py kept up with
+  the same consumers.
+- **Frames2Py against a reference swapped under a lock:** not distinguishable at the
+  study's resolution in any of the 14 comparisons (producer busy time per event, step time
+  p99 and freshness p50; ratios 0.86-1.13). The test is conservative, so this bounds a
+  difference rather than showing none. What the Engine adds over that hand-written design
+  is its contract (read-only published frames, the producer thread enforced, lifecycle and
+  `reset()` semantics, statistics, the free-threaded runtime check), not speed.
+- **Polling delays observation.** With one rendering consumer, the queue designs' consumers
+  received a state a median 0.005 ms after the producer's step that made it, and the
+  polling designs' 6.0-8.1 ms later. [`wait_for_newer()`](../core/snapshots.md#what-waiting-costs),
+  added in 1.1 after the study, was measured against polling under the study's conditions.
+- **Not preregistered: clock speed.** The process ran at about 1.8 cycles per CPU
+  nanosecond with no consumer or a sleeping one, and at about 3.9-4.0 with CPU-busy
+  consumers; the producer's step time halved accordingly. Every comparison against a
+  configuration with no consumer mixes consumer interference with that difference.
+
+Of the study's thirteen testable hypotheses, ten were supported, three were inconclusive
+and none was contradicted. Every configuration's metrics are in
+[`benchmarks/results/observation_v1_cells.csv`](https://github.com/siddiquifaras/frames2py/blob/main/benchmarks/results/observation_v1_cells.csv).
 
 ## Workload characterisation
 

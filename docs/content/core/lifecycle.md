@@ -11,7 +11,7 @@ An Engine is running from construction. `stop()` stops it, `start()` resumes it,
 | `stop()` | if in-bounds events were accumulated since the last publication, publish them; then stop. With nothing pending it publishes nothing, so a windowed kernel's last frame is not replaced by an empty one. The latest snapshot stays readable. |
 | `start()` | resume ingestion. |
 | `reset()` | clear the kernel state, `events_ingested`, `events_out_of_bounds`, `snapshots_published`, the watermark and the published snapshot. The next `ingest()` publishes, like the first. |
-| `snapshot()`, `stats` | read-only; never change anything. |
+| `snapshot()`, `stats`, `wait_for_newer()` | read-only; never change anything. |
 
 **What `reset()` leaves alone:** `SnapshotMeta.sequence` keeps counting (the Engine's
 lifetime, not the session's), `stats.uptime_ns` keeps measuring from construction, the
@@ -31,7 +31,10 @@ raises `RuntimeError` and changes nothing. An Engine is not multi-producer; a di
 producer thread needs a new Engine.
 
 **Any number of consumers.** `snapshot()` and `stats` may be called from any thread, at any
-time, and take no lock.
+time, and take no lock. `wait_for_newer()` may be called from any thread but the producer's
+(it raises `RuntimeError` there); it never takes the lifecycle lock, and `stop()` and
+`reset()` wake no waiter
+([details](snapshots.md#waiting-for-a-newer-snapshot)).
 
 **Lifecycle calls from anywhere.** `start()`, `stop()` and `reset()` may be called from any
 thread. They and `ingest()` take one private lock, so each runs whole and never interleaves
@@ -54,7 +57,12 @@ consumers, no buffer a consumer must hand back. That is a statement about Frames
 code. It runs inside CPython, and these can still delay the producer thread:
 
 - the GIL, on standard builds, when a consumer thread is running Python code;
-- CPython's own per-object locks, such as the list lock taken when the snapshot is stored;
+- CPython's own per-object locks, such as the list lock taken when the snapshot is stored,
+  and the waiter registry's lock, which `wait_for_newer()` callers take only briefly inside
+  CPython, never while running Python code;
+- the work of releasing waiters: each publication releases every thread registered in
+  `wait_for_newer()`, one lock release each, so it costs more with more waiters
+  ([measured](snapshots.md#what-waiting-costs));
 - garbage collection, the memory allocator, and the operating system's scheduling;
 - CPU and memory contention from whatever else the machine runs, consumers included.
 

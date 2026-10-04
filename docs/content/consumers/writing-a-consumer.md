@@ -1,8 +1,9 @@
 # Writing a consumer
 
-A consumer is any code that reads `engine.snapshot()`: a display, a monitor, a logger, a
-second algorithm that works on the accumulated state. It needs no registration: it calls
-`snapshot()` when it wants the latest state.
+A consumer is any code that reads the Engine's published state: a display, a monitor, a
+logger, a second algorithm that works on the accumulated state. It needs no registration:
+it calls `snapshot()` when it wants the latest state, or `wait_for_newer()` to block until
+there is a newer one.
 
 ```python title="producer_consumer.py"
 --8<-- "producer_consumer.py"
@@ -16,15 +17,23 @@ second algorithm that works on the accumulated state. It needs no registration: 
 
 1. **Run the producer on its own thread** and let it call `ingest()` in its loop. It owns
    the Engine's ingest path; consumers never slow it down by waiting.
-2. **Poll at the publication cadence.** Sleep about `snapshot_interval_ms` between reads.
-   Reading faster only returns the same snapshot again.
-3. **Detect new publications by `meta.sequence`.** It is strictly increasing for the
+2. **Wait for the next publication,** as above: pass the last `meta.sequence` you handled
+   to `wait_for_newer()`, with a timeout so the loop can notice its own stop flag. It
+   returns as soon as there is something newer, and `None` on timeout. Its semantics are in
+   [Waiting for a newer snapshot](../core/snapshots.md#waiting-for-a-newer-snapshot).
+3. **Or poll at the publication cadence,** when the consumer runs on its own clock (a
+   display loop, for one, like the [viewer](viewer.md)): call `snapshot()` about every
+   `snapshot_interval_ms`. Reading faster only returns the same snapshot again. Polling
+   sees a state up to one poll interval later than waiting; waiting wakes every waiter at
+   each publication, which costs the producer more as waiters are added
+   ([What waiting costs](../core/snapshots.md#what-waiting-costs)).
+4. **Detect new publications by `meta.sequence`.** It is strictly increasing for the
    Engine's lifetime, across `reset()`: a higher number than the last one you handled means
    a new publication. A consumer slower than the cadence skips publications, which is
    normal; the sequence doesn't say how many were skipped.
-4. **Handle `None`.** `snapshot()` is `None` before the first publication and after
-   `reset()` until the next.
-5. **Copy before you modify.** `snapshot.frame` is shared with every other consumer and
+5. **Handle `None`.** `snapshot()` is `None` before the first publication and after
+   `reset()` until the next; `wait_for_newer()` returns `None` when it times out.
+6. **Copy before you modify.** `snapshot.frame` is shared with every other consumer and
    read-only. Use `snapshot.copy()` (or `copy(out=...)` into a buffer you keep) before
    writing to the data or handing it to a library that ignores NumPy's read-only flag, such
    as `torch.from_numpy` ([Handing snapshots to PyTorch](pytorch.md)).

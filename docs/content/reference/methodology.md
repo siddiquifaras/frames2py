@@ -151,6 +151,123 @@ have 600 rows each and the columns of `gate_v1.csv` above, with `kernel_paramete
 | `stage2_runs_at_20m` | how many of those 20 runs reached 20M events/s |
 | `qualification` | empty, or what is unusual about the row: in run 2, the 28 rows measured again after the power loss |
 
+## The `wait_for_newer` measurement
+
+What [`wait_for_newer()`](../core/snapshots.md#what-waiting-costs), added in 1.1, costs the
+producer. The method was written down in `benchmarks/wait_preregistration.md` before the
+first measurement; it changed afterwards only through dated amendments, each committed
+before the runs it affected.
+
+- **Builds.** The Engine without `wait_for_newer` (commit `e63150e`, labelled `B`) and with
+  it (commit `dcc1fa1`). `B'` is the first build again under a second label: the
+  difference between `B` and `B'` measures the method's own variation (an A/A control).
+- **Waiters.** Threads that loop on `wait_for_newer()` with no timeout and no other work,
+  all registered before the timed calls: 0 (`F0`), 1, 4 or 8 (`F1`, `F4`, `F8`).
+- **M2, the gate's Engine-level cells.** `event_count`, uniform events, 346x260, 640x480 and
+  1280x720; 10k-event calls at interval 0, 100k-event calls at 0 and 16 ms. Timed as
+  [the gate's Engine level](#the-gate-precisely): virtual 20M events/s arrival clock, one
+  warm-up call, then events divided by the sum of the call times, and nearest-rank
+  percentiles of the call times.
+- **M1, one publication per call.** `ingest()` of a single event at interval 0, with exactly
+  W waiters registered before each call: 50 warm-up and 2,000 timed calls, at 346x260 and
+  1280x720. Statistic: the median and percentiles of the call times.
+- **M3, waiting against polling.** The paced condition of the v1 observation study (below):
+  1280x720, 100k-event batches released on the real clock at 20M events/s, 16 ms interval,
+  5 s warm-up, a 10 s window. 1, 4 or 8 consumers each render every state they get, either
+  waiting (`wait_for_newer(last, timeout=0.1)`, `WAIT1` to `WAIT8`) or polling
+  (`snapshot()` every 16 ms, `POLL1` to `POLL8`). Its metrics are the study's: freshness and
+  post-step delay per observation, the producer's step time and busy time per event.
+- **The criterion,** for the M2 cells with no waiter only: a cell with the feature is
+  distinguishably slower when the ratio of its median to the baseline's lies outside the
+  largest `B'`/`B` ratio over all cells (no floor) **and** the two cells' per-run ranges
+  don't overlap. Met if no cell is distinguishably slower. Everything with waiters, M1 and
+  M3 is characterisation, with no pass or fail.
+- **Runs.** 5 runs per cell and label, each its own process, in a seeded shuffle across
+  runtimes, cells and labels; 720 runs. The cell's value is the median of its 5 per-run
+  values.
+
+**Conditions.** 2026-10-02, one session, all 720 runs valid at their first attempt. Apple
+M4 (4P + 6E), 16 GB, macOS 15.7.7, on mains power throughout with Low Power Mode off, each
+run inside the sleep guard. Runtime A: CPython 3.11.14, NumPy 2.4.6. Runtime B: CPython
+3.14.2 free-threaded with the GIL disabled, NumPy 2.4.6. An earlier attempt the same day
+lost mains power partway through; it is not used.
+
+**Result.** No-waiter criterion met: none of the 72 comparisons (9 cells, 2 runtimes, 4
+metrics) was distinguishable in either direction; the ratios of the medians were
+0.94-1.08. That is a statement about this measurement's resolution, not a finding that
+the feature costs nothing. The figures with waiters are on
+[Snapshots and consumers](../core/snapshots.md#what-waiting-costs).
+
+**Data file.**
+[`benchmarks/results/wait_for_newer_r1.csv`](https://github.com/siddiquifaras/frames2py/blob/main/benchmarks/results/wait_for_newer_r1.csv)
+has **600 rows**, one per runtime, experiment, cell, label and metric. M1 and M2 values were
+recomputed from each run's recorded call times; M3 values are those the study's metric
+functions recorded in each run.
+
+| column | meaning |
+|---|---|
+| `runtime`, `python`, `free_threaded_build`, `gil_enabled`, `numpy` | as recorded inside every run's own process |
+| `build`, `commit` | `baseline` (`e63150e`) or `feature` (`dcc1fa1`) |
+| `experiment`, `label` | `M1`, `M2` or `M3`, and the label above |
+| `waiters` | M1 and M2: the waiting threads, 0 to 8 |
+| `consumers`, `consumer_loop` | M3: the rendering consumers, and whether they wait or poll |
+| `kernel`, `width`, `height`, `events_per_call`, `interval_ms` | the cell |
+| `metric`, `unit` | M1: `median_ns`, `p95_ns`, `p99_ns`. M2: `events_per_s`, `p50_ns`, `p95_ns`, `p99_ns`. M3: `step_p99_us`, `busy_ns_per_event`, `freshness_p50_ms`, `freshness_p95_ms`, `post_step_p50_ms`, `post_step_p95_ms`, `achieved_over_offered`, `coverage` (the share of publications each consumer saw) |
+| `median`, `run_min`, `run_max`, `runs` | the median of the per-run values, their range, and the number of runs (5) |
+
+The driver and analysis are `benchmarks/wait_driver.py` and `benchmarks/wait_analysis.py`.
+They expect both builds as git worktrees and both runtimes in environments at the paths the
+preregistration names (its sections 2, 3 and 10), so they are a record of how this was
+measured rather than a tool for other machines.
+
+## The v1 observation study
+
+The study summarised under
+[Consumers under load](performance.md#consumers-under-load-the-v1-observation-study). Its
+protocol, `benchmarks/observation_preregistration.md`, was committed alone before any
+measurement. It changed afterwards only through four numbered amendments, each fixing a
+defect in the measuring harness and committed before the work it affected was re-run;
+none changed a rule, parameter, threshold or configuration.
+
+- **What was compared.** Frames2Py 1.0.0 from the PyPI wheel (an `Engine`, consumers
+  polling `snapshot()` every 16 ms), the same Engine again under a second label as an A/A
+  control, and hand-written designs built on the same `Accumulator` and fed the same
+  batches: inline consumers; finished-frame queues per consumer (blocking with 4 slots,
+  dropping the oldest, unbounded); a shared frame copied under a lock; a reference swapped
+  under a lock; raw batches fanned out to consumers with their own Accumulators.
+- **Conditions.** 1280x720 uniform synthetic events, 100k-event batches released on the
+  real clock at 20M events/s, `event_count`, a 16 ms interval; 5 s warm-up, then a 10 s
+  window. 0, 1 or 4 consumer threads, each rendering every state it got
+  (`viewer.render()`), holding it through a 30 ms sleep, or running 250 ms of pure-Python
+  arithmetic (calibrated on CPython 3.11.14). A second experiment recorded every event with
+  the recorder (Blosc) on the producer's thread or on a thread fed by a queue, and read the
+  file back.
+- **Metrics.** *Freshness* is the time from the start of the producer step that took in the
+  newest event in a consumer's state to the moment the consumer received that state. A run
+  is *sustained* when the producer's lag behind the offered schedule grows by at most 1.6
+  ms/s over the window and is at most 16 ms over its last second. The protocol's section 10
+  defines every metric.
+- **Runs.** 130 configurations, 5 valid runs each, in a seeded shuffle; each run its own
+  process. A configuration's value is the median of its 5 runs. Comparisons use the A/A
+  rule described for `wait_for_newer` above: the largest A/A ratio as the band, and
+  non-overlapping per-run ranges.
+- **Machine.** 2026-09-30, the Apple M4 (4P + 6E), 16 GB, macOS 15.7.7, Low Power Mode off,
+  each run inside the sleep guard. CPython 3.11.14 and CPython 3.14.2 free-threaded with the
+  GIL disabled, both with NumPy 2.4.6. Runs failing an environment check (mains power lost
+  for part of the session, background load) were classified invalid and repeated; 38 of 688
+  attempts.
+
+**Data file.**
+[`benchmarks/results/observation_v1_cells.csv`](https://github.com/siddiquifaras/frames2py/blob/main/benchmarks/results/observation_v1_cells.csv)
+has one row per configuration (130), written by the study's analysis code. `arm` is the
+design (`H` Frames2Py, `H'` its A/A control, `A` inline, `B`, `C`, `E` the blocking,
+drop-oldest and unbounded queues, `F` copy under a lock, `G` reference swap under a lock,
+`RB` raw fan-out, `EP-*` the recording experiment), `workload` the consumer (`W1` render,
+`W3` sleep, `W5` pure Python, `none`), `n` the consumers, `runtime` `A` (3.11.14) or `B`
+(3.14.2t), and `label` whether the producer was sustained in at least 4 of the 5 runs. Every
+metric column holds the median of the 5 runs followed by their range, as `median [min,
+max]`.
+
 ## Measuring your own machine
 
 From a checkout, with the development environment (`uv sync`), writing results outside the

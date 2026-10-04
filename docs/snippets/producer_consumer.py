@@ -1,5 +1,4 @@
 import threading
-import time
 
 import numpy as np
 
@@ -24,14 +23,15 @@ def produce():
 
 
 def consume():
+    last = None
     while True:
         finished = done.is_set()
-        snapshot = engine.snapshot()        # never waits for the producer
-        if snapshot is not None and (not seen or snapshot.meta.sequence != seen[-1]):
-            seen.append(snapshot.meta.sequence)
+        snapshot = engine.wait_for_newer(last, timeout=0.1)  # blocks until a newer publication
+        if snapshot is not None:                              # None: nothing newer within 0.1 s
+            last = snapshot.meta.sequence
+            seen.append(last)
         if finished:
             break
-        time.sleep(0.001)                   # read at about the publication cadence
 
 
 producer = threading.Thread(target=produce)

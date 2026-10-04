@@ -169,6 +169,11 @@ class Engine:
         starts blocking is acted on at its next wake, which is a publication, the timeout, or
         another SIGINT.
 
+        If a SIGINT interrupts the producer's thread during a publication, one waiter may stay
+        blocked until its timeout, or indefinitely without one: the interrupted publication may
+        have taken that waiter off the registry without waking it. Later publications wake every
+        other waiter as usual. Pass a timeout if the producer can be interrupted.
+
         The call never takes the lock that ``ingest()`` holds. Each publication releases the
         waiters registered before it, one lock release each, on the publishing thread; it
         never waits for a waiter.

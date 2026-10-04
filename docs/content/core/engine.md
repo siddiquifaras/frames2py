@@ -63,6 +63,16 @@ read-only frame. Takes no lock. Safe from any thread.
 The Engine has no `watermark` attribute of its own: the watermark at each publication is
 `snapshot.meta.watermark`.
 
+## `wait_for_newer(sequence, *, timeout=None)`
+
+Blocks until a snapshot newer than `sequence` is published, and returns the latest one; with
+a timeout it returns `None` if nothing newer was published in time. Safe from any thread
+except the producer's: there it raises `RuntimeError`, once the Engine has a producer,
+because that thread can't publish while it waits. It never takes the lock `ingest()` holds.
+The rules for `sequence`, timeouts, `stop()`, `reset()` and several waiters, and what waiting
+costs the producer, are under
+[Waiting for a newer snapshot](snapshots.md#waiting-for-a-newer-snapshot).
+
 ## Seeing every publication
 
 Publication happens only inside `ingest()` and `stop()`,
