@@ -14,6 +14,7 @@ that isn't public (apart from the classes public functions return).
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import inspect
 import os
@@ -24,12 +25,17 @@ import subprocess
 import sys
 import typing
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import frames2py
 from tests.adapters.backends import require_backend
+from tests.temporal_cases import CASES, RESET, Case
+from tests.temporal_cases import SENSOR as TEMPORAL_SENSOR
+from tests.temporal_oracle import voxel_value
 from tests.torch_support import require_torch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -324,3 +330,81 @@ def test_the_readme_logo_files_exist() -> None:
 def test_no_page_describes_retired_or_forbidden_behaviour(phrase: str) -> None:
     for page in PAGES:
         assert phrase.lower() not in page.read_text().lower(), f"{page.relative_to(ROOT)} mentions {phrase!r}"
+
+
+# ---------------------------------------------------------------- the temporal semantics table
+
+
+SEMANTICS = CONTENT / "core" / "temporal-semantics.md"
+TABLE_KERNELS = {"StackedHistogram": "stacked_histogram", "VoxelGrid": "voxel_grid"}
+EVENT = re.compile(r"^([+-])(\d+)(?:\(p=(\d+)\))?(?:@(\d+)(?:,(\d+))?)?$")
+
+
+def documented_cases() -> list[Case]:
+    """The rows of the semantics page's two tables, read with the page's own notation."""
+    cases, kernel = [], None
+    for line in SEMANTICS.read_text().splitlines():
+        if line.startswith("## "):
+            kernel = TABLE_KERNELS.get(line[3:].strip())
+        if kernel is None or not line.startswith("| ") or line.startswith(("| case ", "|---")):
+            continue
+        cells = re.findall(r"((?:`[^`]*`|[^|`])+)\|", line[1:])  # a | inside a code span is text
+        name, params, calls, watermark, frame = (cell.strip().strip("`") for cell in cells[:5])
+        bins, bin_us = (int(p) for p in params.split(","))
+        parsed: list[tuple[tuple[int, int, int, int], ...] | str] = []
+        for call in calls.split("|"):
+            call = call.strip()
+            if call in ("reset", "()"):
+                parsed.append(RESET if call == "reset" else ())
+                continue
+            events = []
+            for token in call.split():
+                sign, t, p, x, y = EVENT.fullmatch(token).groups()  # type: ignore[union-attr]
+                events.append((int(t), int(x or 0), int(y or 0), int(p) if p else int(sign == "+")))
+            parsed.append(tuple(events))
+        expected: dict[tuple[int, ...], int] = {}
+        if frame != "all 0":
+            for entry in frame.split(";"):
+                label, values = entry.strip().split(":")
+                *channel, pixel = label.split()
+                x = int(pixel.removeprefix("x"))
+                for j, value in enumerate(values.split()):
+                    number = Fraction(value) * (bin_us if kernel == "voxel_grid" else 1)  # voxel: N / bin_us
+                    assert number.denominator == 1, f"{name}: {value} is not exact"
+                    if number:
+                        key = (j, x) if kernel == "voxel_grid" else (int(channel == ["ON"]), j, x)
+                        expected[key] = int(number)
+        prefix = "histogram" if kernel == "stacked_histogram" else "voxel"
+        cases.append(Case(f"{prefix}: {name}", kernel, tuple(parsed), expected,
+                          None if watermark == "None" else int(watermark), bins, bin_us))
+    return cases
+
+
+def test_the_semantics_table_shows_exactly_the_hand_computed_cases() -> None:
+    documented = {case.name: case for case in documented_cases()}
+    assert sorted(documented) == sorted(case.name for case in CASES)
+    for case in CASES:
+        assert dataclasses.replace(documented[case.name], note=case.note) == case, case.name
+
+
+@pytest.mark.parametrize("case", documented_cases(), ids=lambda c: c.name)
+def test_the_installed_kernels_give_the_documented_frames(case: Case) -> None:
+    kernel = (frames2py.StackedHistogram if case.kernel == "stacked_histogram" else frames2py.VoxelGrid)(
+        bins=case.bins, bin_us=case.bin_us)
+    accumulator = frames2py.Accumulator(TEMPORAL_SENSOR, kernel)
+    for call in case.calls:
+        if call == RESET:
+            accumulator.reset()
+        else:
+            accumulator.accumulate(np.array(list(call), dtype=frames2py.EVENT_DTYPE))
+    frame = accumulator.read()
+    expected = np.zeros_like(frame)
+    for key, numerator in case.expected.items():
+        if case.kernel == "stacked_histogram":
+            channel, j, x = key
+            expected[channel, j, 0, x] = numerator
+        else:
+            j, x = key
+            expected[j, 0, x] = voxel_value(numerator, case.bin_us)
+    assert accumulator.watermark == case.watermark
+    assert frame.dtype == expected.dtype and frame.tobytes() == expected.tobytes()

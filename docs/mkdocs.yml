@@ -96,6 +96,7 @@ nav:
       - Engine: core/engine.md
       - Event contract: core/event-contract.md
       - Kernels: core/kernels.md
+      - Temporal semantics table: core/temporal-semantics.md
       - Snapshots and consumers: core/snapshots.md
       - Lifecycle and threads: core/lifecycle.md
   - Data:

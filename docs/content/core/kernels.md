@@ -24,7 +24,8 @@ as such, and constructing the Engine or Accumulator with it raises an unrelated-
 
 **Windowed** kernels start a new window at each Engine publication: a snapshot shows only
 the events since the previous one. **Running** kernels are not changed by publication: a
-snapshot shows everything accumulated since construction or `reset()`. With an
+snapshot shows everything accumulated since construction or `reset()`, except that the two
+temporal kernels show only their most recent completed time bins. With an
 `Accumulator`, which never publishes, a windowed kernel's window runs from construction or
 `reset()`.
 
@@ -120,8 +121,10 @@ polarity.
   older than the watermark underflow to 0, below what the float32 output can show.
 - **Global NumPy error modes.** Settings that make floating-point underflow raise
   (`np.seterr(under="raise")`, `np.seterr(all="raise")`) are not supported while ingesting
-  into or reading this kernel: an event about 800 `tau_us` behind the reference raises
-  `FloatingPointError` inside the call. Other kernels are not checked under such settings
+  into or reading this kernel. They raise `FloatingPointError`: in `read()`, and so in a
+  publication, once a pixel's value falls below float32's smallest normal number (a single
+  contribution about 88 `tau_us` old); in `accumulate()` or `ingest()` for an event about
+  750 `tau_us` behind the reference. Other kernels are not checked under such settings
   either.
 
 ## Temporal kernels
@@ -146,6 +149,9 @@ a name string; pass an instance.
 ```text title="Output"
 --8<-- "temporal_kernels.out"
 ```
+
+Every rule below is shown on small exact cases, input events to expected frame, in the
+[temporal kernel semantics table](temporal-semantics.md).
 
 ### Bins on the event-time grid
 
@@ -230,6 +236,32 @@ print(rvt_input.shape, rvt_input.dtype)
   the exact quotient whenever `|N| <= 2**53`. Beyond that it can differ from correct
   rounding. That bound is on the numerator; the `bin_us < 2**28` bound doesn't imply it.
 
+**Normalising for a model.** E2VID scales the nonzero values of its voxel grid to mean 0
+and standard deviation 1 and leaves zeros at 0 (`rpg_e2vid`, `utils/inference_utils.py`).
+On a copy of the frame:
+
+```python
+import numpy as np
+
+frame = np.zeros((3, 2, 2), dtype=np.float32)  # e.g. snapshot.frame of VoxelGrid(bins=3, ...)
+frame[:, 0, 1] = [0.8, 0.2, -0.5]
+x = frame.copy()                                # never normalise the shared frame in place
+nonzero = x != 0
+if nonzero.any():                               # E2VID: mean and std of the nonzero values only
+    mean = x[nonzero].mean()
+    std = np.sqrt((x[nonzero] ** 2).mean() - mean**2)
+    x[nonzero] = (x[nonzero] - mean) / std
+print(np.round(x[:, 0, 1], 4), x.dtype)
+```
+
+```text title="Output"
+[ 1.1922  0.0627 -1.2549] float32
+```
+
+E-RAFT's version differs in two details: it uses the sample standard deviation
+(`ddof=1`), and when that is 0 it only subtracts the mean. Match the convention of the model
+you feed.
+
 ### Memory
 
 Sizes in bytes, for an `H x W` sensor:
@@ -268,8 +300,10 @@ publication every call (0 ms) or every 16 ms. **The target is not met everywhere
 - **Accumulation alone** (kernel level): at least 29M events/s in every cell, up to about
   185M.
 - **Through the Engine**, 12 of the 150 cells stay below 20M events/s on each runtime (138
-  pass). Every one is at 1280x720, or at 640x480 with `VoxelGrid` 15 bins, and publishes
-  large frames often:
+  pass). The gate's first run, on the code before the changes the second run measured,
+  missed 13 cells on 3.11.14 and 15 on 3.14.2t, all at Engine level too. In the second run,
+  every miss is at 1280x720, or at 640x480 with `VoxelGrid` 15 bins, and publishes large
+  frames often:
 
 | parameter set | sensor | batch @ interval | M events/s, 3.11.14 / 3.14.2t |
 |---|---|---|---|
