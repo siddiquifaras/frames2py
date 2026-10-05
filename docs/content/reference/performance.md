@@ -153,18 +153,20 @@ study measured none.
   the same consumers.
 - **Frames2Py against a reference swapped under a lock:** not distinguishable at the
   study's resolution in any of the 14 comparisons (producer busy time per event, step time
-  p99 and freshness p50; ratios 0.86-1.13). The test is conservative, so this bounds a
-  difference rather than showing none. What the Engine adds over that hand-written design
-  is its contract (read-only published frames, the producer thread enforced, lifecycle and
-  `reset()` semantics, statistics, the free-threaded runtime check), not speed.
+  p99 and freshness p50; ratios 0.86-1.13). The test is conservative, so this means any
+  difference was smaller than the study could detect, not that there is none. What the
+  Engine adds over that hand-written design is its contract (read-only published frames,
+  the producer thread enforced, lifecycle and `reset()` semantics, statistics, the
+  free-threaded runtime check). Under these conditions it was not measurably faster.
 - **Polling delays observation.** With one rendering consumer, the queue designs' consumers
   received a state a median 0.005 ms after the producer's step that made it, and the
   polling designs' 6.0-8.1 ms later. [`wait_for_newer()`](../core/snapshots.md#what-waiting-costs),
   added in 1.1 after the study, was measured against polling under the study's conditions.
 - **Not preregistered: clock speed.** The process ran at about 1.8 cycles per CPU
   nanosecond with no consumer or a sleeping one, and at about 3.9-4.0 with CPU-busy
-  consumers; the producer's step time halved accordingly. Every comparison against a
-  configuration with no consumer mixes consumer interference with that difference.
+  consumers; the producer's step time roughly halved at the same time. Every comparison
+  against a configuration with no consumer mixes consumer interference with that
+  difference.
 
 Of the study's thirteen testable hypotheses, ten were supported, three were inconclusive
 and none was contradicted. Every configuration's metrics are in
