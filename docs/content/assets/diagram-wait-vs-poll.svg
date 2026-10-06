@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 470" width="960" height="470" role="img" aria-labelledby="title desc">
+  <title id="title">Polling with snapshot() against waiting with wait_for_newer()</title>
+  <desc id="desc">An idealised timeline. The producer publishes sequences 4 to 9 at 0, 16, 32, 48, 64 and 80 ms. A polling consumer calls snapshot() every 20 ms, at 10, 30, 50, 70 and 90 ms, and gets 4, 5, 7, 8 and 9: each state up to one poll interval late, and sequence 6 is never seen. A waiting consumer calls wait_for_newer(4) at 2 ms and is released by publication 5 at 16 ms, handles it until 26 ms, waits with 5 and is released by publication 6 at 32 ms, handles 6 until 70 ms while 7 and 8 are published without waking it, then wait_for_newer(6) returns 8 at once and 7 is skipped. It handles 8 until 78 ms, waits with 8 and is released by publication 9 at 80 ms. Each publication releases only the waiters registered before it, one lock release each, on the producer's thread.</desc>
+  <style>
+    .bg { fill: #FFFFFF; stroke: #D5DAE5; }
+    .axis { stroke: #5B6478; stroke-width: 1; }
+    .grid { stroke: #D5DAE5; stroke-width: 1; stroke-dasharray: 3 4; }
+    .pub { stroke: #1D2433; stroke-width: 2; }
+    .poll { fill: #FFFFFF; stroke: #A87500; stroke-width: 1.8; }
+    .wait { fill: #EAF0FE; stroke: #3160F0; stroke-width: 1.2; }
+    .work { fill: #3160F0; }
+    .wake { fill: none; stroke: #3160F0; stroke-width: 1.4; stroke-dasharray: 4 3; }
+    .late { fill: none; stroke: #A87500; stroke-width: 1.2; }
+    .wakehead { fill: #3160F0; }
+    .latehead { fill: #A87500; }
+    text { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 13px; fill: #1D2433; }
+    .title { font-size: 16px; font-weight: 600; }
+    .h { font-weight: 600; }
+    .muted { fill: #5B6478; }
+    .small { font-size: 12px; }
+    .accent { fill: #3160F0; }
+    .on { fill: #8A5F00; }
+    .worktext { fill: #FFFFFF; font-size: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #161B26; stroke: #2E3546; }
+      .axis { stroke: #A3ABBD; }
+      .grid { stroke: #2E3546; }
+      .pub { stroke: #E7EBF3; }
+      .poll { fill: #161B26; stroke: #F2A900; }
+      .wait { fill: #1C2A4D; stroke: #6A8DFF; }
+      .work { fill: #6A8DFF; }
+      .wake { stroke: #6A8DFF; }
+      .late { stroke: #F2A900; }
+      .wakehead { fill: #6A8DFF; }
+      .latehead { fill: #F2A900; }
+      text { fill: #E7EBF3; }
+      .muted { fill: #A3ABBD; }
+      .accent { fill: #6A8DFF; }
+      .on { fill: #F2A900; }
+      .worktext { fill: #161B26; }
+    }
+  </style>
+  <defs>
+    <marker id="k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="wakehead" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path class="latehead" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0.5" y="0.5" width="959" height="469" rx="8"/>
+  <text class="title" x="24" y="34">Polling against waiting: the same publications, two consumers</text>
+  <text class="muted small" x="24" y="54">Idealised timeline: one publication every 16 ms, numbered by its sequence.</text>
+
+  <!-- vertical guides at each publication -->
+  <line class="grid" x1="190" y1="88" x2="190" y2="372"/>
+  <line class="grid" x1="302" y1="88" x2="302" y2="372"/>
+  <line class="grid" x1="414" y1="88" x2="414" y2="372"/>
+  <line class="grid" x1="526" y1="88" x2="526" y2="372"/>
+  <line class="grid" x1="638" y1="88" x2="638" y2="372"/>
+  <line class="grid" x1="750" y1="88" x2="750" y2="372"/>
+
+  <!-- lane 1: producer -->
+  <text class="h" x="24" y="104">producer</text>
+  <text class="muted small" x="24" y="122">publications</text>
+  <line class="axis" x1="190" y1="112" x2="900" y2="112"/>
+  <line class="pub" x1="190" y1="96" x2="190" y2="112"/><text class="mono" x="190" y="90" text-anchor="middle">4</text>
+  <line class="pub" x1="302" y1="96" x2="302" y2="112"/><text class="mono" x="302" y="90" text-anchor="middle">5</text>
+  <line class="pub" x1="414" y1="96" x2="414" y2="112"/><text class="mono" x="414" y="90" text-anchor="middle">6</text>
+  <line class="pub" x1="526" y1="96" x2="526" y2="112"/><text class="mono" x="526" y="90" text-anchor="middle">7</text>
+  <line class="pub" x1="638" y1="96" x2="638" y2="112"/><text class="mono" x="638" y="90" text-anchor="middle">8</text>
+  <line class="pub" x1="750" y1="96" x2="750" y2="112"/><text class="mono" x="750" y="90" text-anchor="middle">9</text>
+
+  <!-- lane 2: polling -->
+  <text class="h" x="24" y="178">polling consumer</text>
+  <text class="mono" x="24" y="196">snapshot()</text>
+  <text class="muted small" x="24" y="212">every 20 ms</text>
+  <line class="axis" x1="190" y1="190" x2="900" y2="190"/>
+  <circle class="poll" cx="260" cy="190" r="6"/><text class="mono on" x="260" y="216" text-anchor="middle">4</text>
+  <circle class="poll" cx="400" cy="190" r="6"/><text class="mono on" x="400" y="216" text-anchor="middle">5</text>
+  <circle class="poll" cx="540" cy="190" r="6"/><text class="mono on" x="540" y="216" text-anchor="middle">7</text>
+  <circle class="poll" cx="680" cy="190" r="6"/><text class="mono on" x="680" y="216" text-anchor="middle">8</text>
+  <circle class="poll" cx="820" cy="190" r="6"/><text class="mono on" x="820" y="216" text-anchor="middle">9</text>
+  <path class="late" d="M306,166 L392,166" marker-end="url(#l)"/>
+  <text class="on small" x="310" y="160">5: seen 14 ms late</text>
+  <text class="on small" x="470" y="160" text-anchor="middle">6 never seen</text>
+
+  <!-- lane 3: waiting -->
+  <text class="h" x="24" y="282">waiting consumer</text>
+  <text class="mono" x="24" y="300">wait_for_newer(last)</text>
+  <text class="muted small" x="24" y="316">then handles it</text>
+  <rect class="wait" x="204" y="278" width="98" height="20"/>
+  <rect class="work" x="302" y="278" width="70" height="20"/><text class="worktext" x="337" y="292" text-anchor="middle">5</text>
+  <rect class="wait" x="372" y="278" width="42" height="20"/>
+  <rect class="work" x="414" y="278" width="266" height="20"/><text class="worktext" x="547" y="292" text-anchor="middle">handles 6</text>
+  <rect class="work" x="680" y="278" width="56" height="20"/><text class="worktext" x="708" y="292" text-anchor="middle">8</text>
+  <rect class="wait" x="736" y="278" width="14" height="20"/>
+  <rect class="work" x="750" y="278" width="70" height="20"/><text class="worktext" x="785" y="292" text-anchor="middle">9</text>
+
+  <path class="wake" d="M302,114 L302,274" marker-end="url(#k)"/>
+  <path class="wake" d="M414,114 L414,274" marker-end="url(#k)"/>
+  <path class="wake" d="M750,114 L750,274" marker-end="url(#k)"/>
+
+  <text class="accent small" x="253" y="316" text-anchor="middle">blocked (registered)</text>
+  <text class="accent small" x="582" y="250" text-anchor="middle">7 and 8 are published while it works:</text>
+  <text class="accent small" x="582" y="266" text-anchor="middle">it isn't registered, so not woken; nothing is queued</text>
+  <text class="accent small" x="680" y="324" text-anchor="middle">wait_for_newer(6) returns 8 at once;</text>
+  <text class="accent small" x="680" y="340" text-anchor="middle">7 is skipped</text>
+
+  <!-- time axis -->
+  <line class="axis" x1="190" y1="372" x2="900" y2="372"/>
+  <text class="muted small" x="190" y="390" text-anchor="middle">0</text>
+  <text class="muted small" x="302" y="390" text-anchor="middle">16</text>
+  <text class="muted small" x="414" y="390" text-anchor="middle">32</text>
+  <text class="muted small" x="526" y="390" text-anchor="middle">48</text>
+  <text class="muted small" x="638" y="390" text-anchor="middle">64</text>
+  <text class="muted small" x="750" y="390" text-anchor="middle">80</text>
+  <text class="muted small" x="862" y="390" text-anchor="middle">96 ms</text>
+
+  <!-- legend and notes -->
+  <rect class="wait" x="24" y="408" width="22" height="12"/><text class="small" x="52" y="418">blocked in wait_for_newer()</text>
+  <rect class="work" x="230" y="408" width="22" height="12"/><text class="small" x="258" y="418">handling a snapshot</text>
+  <circle class="poll" cx="414" cy="414" r="6"/><text class="small" x="426" y="418">a snapshot() call and the sequence it got</text>
+  <text class="small" x="24" y="446">Each publication releases only the waiters registered before it, one lock release each, on the producer's thread; more waiters</text>
+  <text class="small" x="24" y="462">mean more work per publication. Polling sees a state up to one poll interval late, and can miss or re-read publications.</text>
+</svg>

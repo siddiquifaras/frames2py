@@ -17,7 +17,8 @@ flowchart TD
 The producer does all of the work: validation, accumulation and publication run inside
 `ingest()`, on the thread that calls it. Consumers only read the latest published snapshot,
 either when they choose (`snapshot()`) or when a publication wakes them
-(`wait_for_newer()`). Nothing flows from a consumer back to the producer.
+(`wait_for_newer()`). Nothing flows from a consumer back to the producer. The
+[overview](../index.md) draws this arrangement next to two common coupled pipelines.
 
 ## Components
 

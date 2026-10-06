@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="960" height="520" role="img" aria-labelledby="title desc">
+  <title id="title">Frames2Py: a producer path that publishes snapshots, and consumers that read them</title>
+  <desc id="desc">An event stream from a camera SDK, a file adapter or your code enters Engine.ingest() on the producer thread. Inside the Engine, an internal Accumulator validates the events, checks timestamp range and bounds, tracks the watermark and accumulates into kernel state. The Engine publishes at most once per snapshot_interval_ms, only inside ingest() or stop(), as a fresh read-only frame with its SnapshotMeta. The latest Snapshot is read by any number of consumer threads: a viewer calling snapshot(), a tracker waiting with wait_for_newer(), and a slow model that skips publications it misses. Consumers read; their work never runs on the producer path, and the Engine keeps only the latest snapshot.</desc>
+  <style>
+    .bg { fill: #FFFFFF; stroke: #D5DAE5; }
+    .box { fill: #F4F6FA; stroke: #1D2433; stroke-width: 1.5; }
+    .inner { fill: #FFFFFF; stroke: #1D2433; stroke-width: 1.2; }
+    .snap { fill: #EAF0FE; stroke: #3160F0; stroke-width: 1.8; }
+    .consumer { fill: #FFF6DE; stroke: #A87500; stroke-width: 1.5; }
+    .region { fill: none; stroke: #5B6478; stroke-width: 1.2; stroke-dasharray: 6 4; }
+    .line { fill: none; stroke: #1D2433; stroke-width: 1.5; }
+    .read { fill: none; stroke: #3160F0; stroke-width: 1.5; }
+    .head { fill: #1D2433; }
+    .readhead { fill: #3160F0; }
+    text { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 13px; fill: #1D2433; }
+    .title { font-size: 16px; font-weight: 600; }
+    .h { font-weight: 600; }
+    .muted { fill: #5B6478; }
+    .small { font-size: 12px; }
+    .accent { fill: #3160F0; }
+    .on { fill: #8A5F00; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #161B26; stroke: #2E3546; }
+      .box { fill: #1F2533; stroke: #E7EBF3; }
+      .inner { fill: #161B26; stroke: #E7EBF3; }
+      .snap { fill: #1C2A4D; stroke: #6A8DFF; }
+      .consumer { fill: #33290F; stroke: #F2A900; }
+      .region { stroke: #A3ABBD; }
+      .line { stroke: #E7EBF3; }
+      .read { stroke: #6A8DFF; }
+      .head { fill: #E7EBF3; }
+      .readhead { fill: #6A8DFF; }
+      text { fill: #E7EBF3; }
+      .muted { fill: #A3ABBD; }
+      .accent { fill: #6A8DFF; }
+      .on { fill: #F2A900; }
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="readhead" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0.5" y="0.5" width="959" height="519" rx="8"/>
+  <text class="title" x="24" y="34">Frames2Py: consumers read published snapshots; their work stays off the producer path</text>
+
+  <!-- event stream -->
+  <rect class="box" x="24" y="168" width="150" height="100" rx="6"/>
+  <text class="h" x="99" y="194" text-anchor="middle">event stream</text>
+  <text class="muted small" x="99" y="213" text-anchor="middle">camera SDK, file</text>
+  <text class="muted small" x="99" y="229" text-anchor="middle">adapter, your code</text>
+  <text class="mono" x="99" y="254" text-anchor="middle">EVENT_DTYPE arrays</text>
+  <line class="line" x1="174" y1="218" x2="214" y2="218" marker-end="url(#a)"/>
+
+  <!-- producer path -->
+  <rect class="region" x="200" y="56" width="384" height="358" rx="8"/>
+  <text class="muted small" x="212" y="74">producer thread: the producer path</text>
+  <rect class="box" x="218" y="84" width="350" height="316" rx="6"/>
+  <text class="h" x="232" y="106">Engine</text>
+  <text class="mono" x="286" y="106">ingest(events)</text>
+  <text class="muted small" x="232" y="124">owns cadence, publication, lifecycle (start, stop, reset), stats</text>
+
+  <rect class="inner" x="232" y="138" width="322" height="112" rx="6"/>
+  <text class="h" x="246" y="160">Accumulator</text>
+  <text class="muted small" x="330" y="160">(internal to the Engine)</text>
+  <text class="small" x="246" y="182">structural validation, timestamp-range check,</text>
+  <text class="small" x="246" y="200">bounds check, watermark, out-of-bounds count</text>
+  <text class="small" x="246" y="222">kernel state, accumulated with the</text>
+  <text class="small" x="246" y="240">kernel's own strategy</text>
+  <line class="line" x1="393" y1="250" x2="393" y2="276" marker-end="url(#a)"/>
+
+  <rect class="inner" x="232" y="280" width="322" height="106" rx="6"/>
+  <text class="h" x="246" y="302">publication</text>
+  <text class="small" x="246" y="324">at most once per snapshot_interval_ms,</text>
+  <text class="small" x="246" y="342">only inside ingest() or stop()</text>
+  <text class="small" x="246" y="364">a fresh frame, read-only, with its</text>
+  <text class="small" x="246" y="380">SnapshotMeta (watermark, sequence)</text>
+  <line class="line" x1="554" y1="333" x2="622" y2="270" marker-end="url(#a)"/>
+
+  <!-- published snapshot -->
+  <rect class="snap" x="604" y="170" width="160" height="96" rx="6"/>
+  <text class="h accent" x="684" y="194" text-anchor="middle">latest Snapshot</text>
+  <text class="small" x="684" y="214" text-anchor="middle">frame: shared, read-only</text>
+  <text class="small" x="684" y="232" text-anchor="middle">meta: watermark, sequence</text>
+  <text class="small" x="684" y="250" text-anchor="middle">never written again</text>
+
+  <!-- consumers -->
+  <rect class="region" x="790" y="56" width="152" height="358" rx="8"/>
+  <text class="muted small" x="800" y="74">consumer threads</text>
+  <rect class="consumer" x="802" y="88" width="128" height="74" rx="6"/>
+  <text class="h" x="866" y="110" text-anchor="middle">viewer</text>
+  <text class="mono" x="866" y="130" text-anchor="middle">snapshot()</text>
+  <text class="on small" x="866" y="148" text-anchor="middle">at its display rate</text>
+  <rect class="consumer" x="802" y="182" width="128" height="74" rx="6"/>
+  <text class="h" x="866" y="204" text-anchor="middle">tracker</text>
+  <text class="mono" x="866" y="224" text-anchor="middle">wait_for_newer()</text>
+  <text class="on small" x="866" y="242" text-anchor="middle">woken by publication</text>
+  <rect class="consumer" x="802" y="276" width="128" height="74" rx="6"/>
+  <text class="h" x="866" y="298" text-anchor="middle">slow model</text>
+  <text class="mono" x="866" y="318" text-anchor="middle">wait_for_newer()</text>
+  <text class="on small" x="866" y="336" text-anchor="middle">skips what it misses</text>
+  <text class="muted small" x="866" y="378" text-anchor="middle">any number, each</text>
+  <text class="muted small" x="866" y="394" text-anchor="middle">at its own pace</text>
+
+  <path class="read" d="M764,200 L798,128" marker-end="url(#r)"/>
+  <path class="read" d="M764,218 L798,218" marker-end="url(#r)"/>
+  <path class="read" d="M764,236 L798,310" marker-end="url(#r)"/>
+  <text class="accent small" x="781" y="211" text-anchor="middle">read</text>
+
+  <!-- notes -->
+  <text x="24" y="446">Consumers only read. snapshot() takes no lock; a publication releases the threads blocked in wait_for_newer(), bounded</text>
+  <text x="24" y="464">work that never waits for a consumer. The Engine keeps the latest snapshot only and queues nothing for slow consumers.</text>
+  <text x="24" y="482">A consumer that modifies the data works on snapshot.copy(). CPython itself (the GIL, its own locks, scheduling) can still delay</text>
+  <text x="24" y="500">the producer; Frames2Py adds no synchronisation there that a consumer can hold.</text>
+</svg>

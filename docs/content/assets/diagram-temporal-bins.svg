@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="960" height="520" role="img" aria-labelledby="title desc">
+  <title id="title">Temporal bins, the watermark and the closing time, on the worked example</title>
+  <desc id="desc">StackedHistogram and VoxelGrid with bins=3 and bin_us=10, and ON events at t = 0, 5, 12, 25 and 31 microseconds. Grid bin k covers [10k, 10k + 10). The watermark T is 31, so bin 3, [30, 40), is in progress and hidden; the closing time is 30. StackedHistogram shows bins 0, 1 and 2, the events in [0, 30), with ON counts 2, 1, 1. VoxelGrid has knots at 10, 20 and 30 and spans [10, 30): the event at 12 gives 0.8 to knot 10 and 0.2 to knot 20, the event at 25 gives 0.5 to knots 20 and 30, so the values are 0.8, 0.7, 0.5; the events at 0 and 5 are older than the span. The event at 31, and one at exactly 30, show once the watermark reaches 40.</desc>
+  <style>
+    .bg { fill: #FFFFFF; stroke: #D5DAE5; }
+    .bin { fill: #F4F6FA; stroke: #1D2433; stroke-width: 1.2; }
+    .hidden { fill: url(#hatch); stroke: #5B6478; stroke-width: 1.2; stroke-dasharray: 5 3; }
+    .hatchline { stroke: #C5CBD8; stroke-width: 1.5; }
+    .cell { fill: #FFF6DE; stroke: #A87500; stroke-width: 1.4; }
+    .axis { stroke: #5B6478; stroke-width: 1; }
+    .event { fill: #F2A900; stroke: #8A5F00; stroke-width: 1.2; }
+    .knot { fill: #3160F0; }
+    .wm { stroke: #3160F0; stroke-width: 2; }
+    .close { stroke: #1D2433; stroke-width: 1.4; stroke-dasharray: 5 4; }
+    .bracket { fill: none; stroke: #1D2433; stroke-width: 1.2; }
+    .share { fill: none; stroke: #3160F0; stroke-width: 1.2; }
+    .sharehead { fill: #3160F0; }
+    text { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 13px; fill: #1D2433; }
+    .title { font-size: 16px; font-weight: 600; }
+    .h { font-weight: 600; }
+    .muted { fill: #5B6478; }
+    .small { font-size: 12px; }
+    .accent { fill: #3160F0; }
+    .on { fill: #8A5F00; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #161B26; stroke: #2E3546; }
+      .bin { fill: #1F2533; stroke: #E7EBF3; }
+      .hidden { stroke: #A3ABBD; }
+      .hatchline { stroke: #3A4254; }
+      .cell { fill: #33290F; stroke: #F2A900; }
+      .axis { stroke: #A3ABBD; }
+      .event { fill: #F2A900; stroke: #F2A900; }
+      .knot { fill: #6A8DFF; }
+      .wm { stroke: #6A8DFF; }
+      .close { stroke: #E7EBF3; }
+      .bracket { stroke: #E7EBF3; }
+      .share { stroke: #6A8DFF; }
+      .sharehead { fill: #6A8DFF; }
+      text { fill: #E7EBF3; }
+      .muted { fill: #A3ABBD; }
+      .accent { fill: #6A8DFF; }
+      .on { fill: #F2A900; }
+    }
+  </style>
+  <defs>
+    <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line class="hatchline" x1="0" y1="0" x2="0" y2="8"/>
+    </pattern>
+    <marker id="s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path class="sharehead" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0.5" y="0.5" width="959" height="519" rx="8"/>
+  <text class="title" x="24" y="34">Completed bins only: what a temporal frame shows at watermark T</text>
+  <text class="muted small" x="24" y="54">The worked example: bins=3, bin_us=10; ON events at t = 0, 5, 12, 25, 31 µs. Time in µs, left to right.</text>
+
+  <!-- grid bins -->
+  <text class="h" x="24" y="96">grid bins</text>
+  <text class="mono muted" x="24" y="114">k = t // bin_us</text>
+  <rect class="bin" x="180" y="78" width="160" height="44"/>
+  <rect class="bin" x="340" y="78" width="160" height="44"/>
+  <rect class="bin" x="500" y="78" width="160" height="44"/>
+  <rect class="hidden" x="660" y="78" width="160" height="44"/>
+  <text x="260" y="98" text-anchor="middle">bin 0</text><text class="mono" x="260" y="114" text-anchor="middle">[0, 10)</text>
+  <text x="420" y="98" text-anchor="middle">bin 1</text><text class="mono" x="420" y="114" text-anchor="middle">[10, 20)</text>
+  <text x="580" y="98" text-anchor="middle">bin 2</text><text class="mono" x="580" y="114" text-anchor="middle">[20, 30)</text>
+  <text x="740" y="98" text-anchor="middle">bin 3: in progress</text><text class="mono" x="740" y="114" text-anchor="middle">[30, 40) hidden</text>
+
+  <!-- events and time axis -->
+  <text class="h" x="24" y="162">ON events</text>
+  <line class="axis" x1="180" y1="168" x2="840" y2="168"/>
+  <circle class="event" cx="180" cy="168" r="6"/><text class="mono" x="180" y="152" text-anchor="middle">0</text>
+  <circle class="event" cx="260" cy="168" r="6"/><text class="mono" x="260" y="152" text-anchor="middle">5</text>
+  <circle class="event" cx="372" cy="168" r="6"/><text class="mono" x="372" y="152" text-anchor="middle">12</text>
+  <circle class="event" cx="580" cy="168" r="6"/><text class="mono" x="580" y="152" text-anchor="middle">25</text>
+  <circle class="event" cx="676" cy="168" r="6"/><text class="mono" x="682" y="152">31</text>
+
+  <!-- closing time and watermark -->
+  <line class="close" x1="660" y1="70" x2="660" y2="426"/>
+  <line class="wm" x1="676" y1="128" x2="676" y2="426"/>
+  <text class="small" x="652" y="196" text-anchor="end">closing time 30 = (T // bin_us) · bin_us</text>
+  <text class="accent small h" x="684" y="196">watermark T = 31</text>
+  <text class="accent small" x="684" y="212">largest accumulated</text>
+  <text class="accent small" x="684" y="228">in-bounds timestamp</text>
+
+  <!-- StackedHistogram -->
+  <text class="h" x="24" y="258">StackedHistogram</text>
+  <text class="muted small" x="24" y="276">ON channel, one pixel</text>
+  <rect class="cell" x="184" y="244" width="152" height="34" rx="4"/>
+  <rect class="cell" x="344" y="244" width="152" height="34" rx="4"/>
+  <rect class="cell" x="504" y="244" width="152" height="34" rx="4"/>
+  <text class="mono" x="260" y="266" text-anchor="middle">j=0: 2</text>
+  <text class="mono" x="420" y="266" text-anchor="middle">j=1: 1</text>
+  <text class="mono" x="580" y="266" text-anchor="middle">j=2: 1</text>
+  <text class="muted small" x="748" y="266" text-anchor="middle">not in the frame</text>
+  <path class="bracket" d="M180,288 L180,296 L660,296 L660,288"/>
+  <text class="small" x="420" y="312" text-anchor="middle">extent bins · bin_us = 30 µs: the events in [0, 30)</text>
+
+  <!-- VoxelGrid -->
+  <text class="h" x="24" y="372">VoxelGrid</text>
+  <text class="muted small" x="24" y="390">signed, one pixel</text>
+  <text class="muted small" x="260" y="376" text-anchor="middle">0 and 5: older than</text>
+  <text class="muted small" x="260" y="392" text-anchor="middle">the span, add 0</text>
+  <line class="axis" x1="340" y1="372" x2="660" y2="372"/>
+  <path class="share" d="M372,366 Q362,352 346,365" marker-end="url(#s)"/>
+  <path class="share" d="M372,366 Q440,336 494,365" marker-end="url(#s)"/>
+  <path class="share" d="M580,366 Q545,342 506,365" marker-end="url(#s)"/>
+  <path class="share" d="M580,366 Q620,342 654,365" marker-end="url(#s)"/>
+  <circle class="event" cx="372" cy="372" r="4"/>
+  <circle class="event" cx="580" cy="372" r="4"/>
+  <text class="accent small" x="430" y="342" text-anchor="middle">12 gives 0.8 and 0.2</text>
+  <text class="accent small" x="580" y="342" text-anchor="middle">25 gives 0.5 and 0.5</text>
+  <circle class="knot" cx="340" cy="372" r="6"/>
+  <circle class="knot" cx="500" cy="372" r="6"/>
+  <circle class="knot" cx="660" cy="372" r="6"/>
+  <text class="mono" x="340" y="398" text-anchor="middle">j=0: 0.8</text>
+  <text class="mono" x="500" y="398" text-anchor="middle">j=1: 0.7</text>
+  <text class="mono" x="612" y="398" text-anchor="middle">j=2: 0.5</text>
+  <text class="muted small" x="748" y="376" text-anchor="middle">knots at 10, 20, 30</text>
+  <path class="bracket" d="M340,410 L340,418 L660,418 L660,410"/>
+  <text class="small" x="500" y="434" text-anchor="middle">span (bins − 1) · bin_us = 20 µs: the events in [10, 30)</text>
+
+  <!-- notes -->
+  <text x="24" y="466">Bins are half-open, k · bin_us ≤ t &lt; (k + 1) · bin_us, on an absolute event-time grid. A frame shows only completed</text>
+  <text x="24" y="484">bins, those before T // bin_us; j = 0 is the oldest bin or knot. The event at 31 is in bin 3, which is still filling:</text>
+  <text x="24" y="502">it, and an event at exactly 30, show once the watermark reaches 40. Publication and stop() don't move the watermark.</text>
+</svg>

@@ -76,6 +76,11 @@ pip install --upgrade frames2py
   and a [Known limitations](https://siddiquifaras.github.io/frames2py/reference/support/#known-limitations) section.
 - New data files in `benchmarks/results/`: the temporal-kernel gate's two runs, the
   `wait_for_newer` measurement and the observation study's per-configuration table.
+- Diagrams: Frames2Py's arrangement next to two coupled pipelines on the
+  [overview](https://siddiquifaras.github.io/frames2py/), waiting against polling under
+  [Waiting for a newer snapshot](https://siddiquifaras.github.io/frames2py/core/snapshots/#waiting-for-a-newer-snapshot),
+  and the temporal kernels' bins and closing time in the
+  [semantics table](https://siddiquifaras.github.io/frames2py/core/temporal-semantics/#the-closing-time).
 
 ### Maintenance
 

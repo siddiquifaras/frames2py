@@ -95,7 +95,11 @@ complete producer and consumer.
 ## Waiting for a newer snapshot
 
 `engine.wait_for_newer(sequence, *, timeout=None)` blocks until a snapshot newer than
-`sequence` is published, then returns the latest one:
+`sequence` is published, then returns the latest one.
+
+![An idealised timeline of publications with sequences 4 to 9, one every 16 ms. A polling consumer calls snapshot() every 20 ms and gets 4, 5, 7, 8 and 9: each state up to one poll interval late, and 6 never seen. A waiting consumer is blocked in wait_for_newer(4) until publication 5 releases it, handles 5, waits again and is released by 6, handles 6 for longer while 7 and 8 are published without waking it, then wait_for_newer(6) returns 8 at once and 7 is skipped; it handles 8, waits, and is released by 9. Each publication releases only the waiters registered before it, one lock release each, on the producer's thread.](../assets/diagram-wait-vs-poll.svg)
+
+In detail:
 
 - **Newer** means `snapshot.meta.sequence > sequence`. `None` accepts any publication.
   `sequence` must be an integer (an `int`, or a NumPy integer) or `None`: a negative one
