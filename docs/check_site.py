@@ -13,8 +13,8 @@ Fails unless:
 - every link from the site or the README to this repository's files on GitHub
   (``github.com/.../blob/main/...``, ``raw.githubusercontent.com/.../main/...``) names a file
   that exists in the checkout, and every absolute link into the documentation site from the
-  README or the changelog (whose sections are also the GitHub Release notes) names a page
-  (and anchor) of the built site.
+  README, the changelog (whose sections are also the GitHub Release notes), CONTRIBUTING.md
+  or SECURITY.md names a page (and anchor) of the built site.
 """
 
 from __future__ import annotations
@@ -203,6 +203,8 @@ def main() -> int:
             check_repo_links(errors, str(html.relative_to(SITE)), html.read_text())
         check_site_links(errors, origin, pages, ROOT / "README.md", minimum=2)
         check_site_links(errors, origin, pages, DOCS / "content" / "changelog.md")
+        for shown in ("CONTRIBUTING.md", "SECURITY.md"):  # shown on GitHub and, included, on the site
+            check_site_links(errors, origin, pages, ROOT / shown)
     finally:
         server.shutdown()
     for error in errors:

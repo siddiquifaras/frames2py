@@ -165,8 +165,10 @@ uv sync --all-extras
 uv run pytest
 ```
 
-See [Testing](https://siddiquifaras.github.io/frames2py/development/testing/) and
-[Contributing](https://siddiquifaras.github.io/frames2py/development/contributing/).
+See [CONTRIBUTING.md](https://github.com/siddiquifaras/frames2py/blob/main/CONTRIBUTING.md)
+and [Testing](https://siddiquifaras.github.io/frames2py/development/testing/). To report a
+security problem privately, see
+[SECURITY.md](https://github.com/siddiquifaras/frames2py/blob/main/SECURITY.md).
 
 ## License
 

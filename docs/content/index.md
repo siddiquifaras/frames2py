@@ -71,4 +71,5 @@ Performance figures are measurements on one machine, with their conditions: see
 
 Frames2Py is licensed under the Apache License, Version 2.0, from 1.1.0 on
 ([LICENSE](https://github.com/siddiquifaras/frames2py/blob/main/LICENSE)). Releases 1.0.0rc1
-and 1.0.0 were published under the MIT License, which still applies to them.
+and 1.0.0 were published under the MIT License, which still applies to them. Reporting a
+security problem: [Security](development/security.md).

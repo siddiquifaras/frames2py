@@ -1,6 +1,6 @@
 """The documentation tells the truth about the installed package.
 
-Every Python block in README.md and docs/content/ is one of three kinds:
+Every Python block in README.md, CONTRIBUTING.md, SECURITY.md and docs/content/ is one of three kinds:
 
 - an included example: its only line is ``--8<-- "name.py"``, pulling in docs/snippets/name.py,
   which runs as its own process and must print exactly docs/snippets/name.out;
@@ -44,7 +44,7 @@ SNIPPETS = ROOT / "docs" / "snippets"
 API_PAGES = CONTENT / "reference" / "api"
 FIXTURES = ROOT / "tests" / "data"
 PAGES_URL = "https://siddiquifaras.github.io/frames2py/"
-PAGES = [ROOT / "README.md", *sorted(CONTENT.rglob("*.md"))]
+PAGES = [ROOT / "README.md", ROOT / "CONTRIBUTING.md", ROOT / "SECURITY.md", *sorted(CONTENT.rglob("*.md"))]
 SKETCH = "# Sketch (not runnable)"
 INCLUDE = re.compile(r'^--8<-- "([^"]+)"$')
 BACKENDS = {"aedat4": ("dv_processing",), "hdf5": ("h5py", "hdf5plugin"),

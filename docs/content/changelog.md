@@ -81,6 +81,9 @@ pip install --upgrade frames2py
   [Waiting for a newer snapshot](https://siddiquifaras.github.io/frames2py/core/snapshots/#waiting-for-a-newer-snapshot),
   and the temporal kernels' bins and closing time in the
   [semantics table](https://siddiquifaras.github.io/frames2py/core/temporal-semantics/#the-closing-time).
+- [CONTRIBUTING.md](https://github.com/siddiquifaras/frames2py/blob/main/CONTRIBUTING.md)
+  and [SECURITY.md](https://github.com/siddiquifaras/frames2py/blob/main/SECURITY.md), also
+  shown under Development in the documentation.
 
 ### Maintenance
 

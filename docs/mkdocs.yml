@@ -51,7 +51,8 @@ markdown_extensions:
       anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.snippets:
-      base_path: [docs/snippets]
+      # The tested examples, and the two root files the Development pages show as they are.
+      base_path: [docs/snippets, CONTRIBUTING.md, SECURITY.md]
       check_paths: true
   - pymdownx.superfences:
       custom_fences:
@@ -123,4 +124,5 @@ nav:
   - Development:
       - Testing: development/testing.md
       - Contributing: development/contributing.md
+      - Security: development/security.md
   - Changelog: changelog.md
