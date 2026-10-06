@@ -12,14 +12,14 @@ sensor is seeing right now (a display, a monitor, a logger, a second algorithm).
 second inside the first and the hot loop slows to the speed of the display. Put a queue
 between them and the queue grows, or blocks, or drops.
 
-![Two coupled pipelines. First, consumer work runs inside the processing loop, so the loop runs at the consumer's speed and unread events back up at the source. Second, a queue sits between producer and consumer: unbounded, it grows and the consumer works on ever older frames; bounded and blocking, the producer waits; bounded and dropping, the queue's policy decides which frames the consumer sees.](assets/diagram-coupled-pipelines.svg)
+[![Two coupled pipelines. First, consumer work runs inside the processing loop, so the loop runs at the consumer's speed and unread events back up at the source. Second, a queue sits between producer and consumer: unbounded, it grows and the consumer works on ever older frames; bounded and blocking, the producer waits; bounded and dropping, the queue's policy decides which frames the consumer sees.](assets/diagram-coupled-pipelines.svg)](assets/diagram-coupled-pipelines.svg){ .f2p-diagram }
 
 Frames2Py separates them. Your producer feeds events to `Engine.ingest()`, which
 accumulates them through a kernel into a per-pixel representation and publishes snapshots
 of it. Any number of consumers read the latest snapshot at their own pace. The producer
 never waits for them.
 
-![Frames2Py's arrangement. An event stream enters Engine.ingest() on the producer thread. Inside the Engine, an internal Accumulator validates the events, checks timestamp range and bounds, tracks the watermark and accumulates kernel state; the Engine publishes at most once per snapshot_interval_ms, inside ingest() or stop(), a fresh read-only frame with its SnapshotMeta. Consumer threads, a viewer calling snapshot(), a tracker and a slow model calling wait_for_newer(), read the latest Snapshot at their own pace. Their work never runs on the producer path, and the Engine keeps only the latest snapshot.](assets/diagram-frames2py-architecture.svg)
+[![Frames2Py's arrangement. An event stream enters Engine.ingest() on the producer thread. Inside the Engine, an internal Accumulator validates the events, checks timestamp range and bounds, tracks the watermark and accumulates kernel state; the Engine publishes at most once per snapshot_interval_ms, inside ingest() or stop(), a fresh read-only frame with its SnapshotMeta. Consumer threads, a viewer calling snapshot(), a tracker and a slow model calling wait_for_newer(), read the latest Snapshot at their own pace. Their work never runs on the producer path, and the Engine keeps only the latest snapshot.](assets/diagram-frames2py-architecture.svg)](assets/diagram-frames2py-architecture.svg){ .f2p-diagram }
 
 The [Architecture](core/architecture.md) page has the ingest path step by step, and the
 rules the design keeps.
