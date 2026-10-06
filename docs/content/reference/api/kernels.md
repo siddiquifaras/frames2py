@@ -18,5 +18,9 @@ the Accumulator calls. You don't call them yourself unless you are writing a ker
 ::: frames2py.kernels.TimestampDecay
 
 ::: frames2py.kernels.StackedHistogram
+    options:
+      show_bases: false
 
 ::: frames2py.kernels.VoxelGrid
+    options:
+      show_bases: false

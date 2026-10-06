@@ -84,13 +84,7 @@ def _recent(events: EventArray, oldest: int, bin_us: int) -> EventArray:
 
 
 class _Temporal:
-    """Parameters and the lifecycle shared by the two kernels."""
-
-    _MIN_BINS: int
-
-    def __init__(self, *, bins: int, bin_us: int) -> None:
-        self._bins = _parameter(bins, "bins", self._MIN_BINS)
-        self._bin_us = _parameter(bin_us, "bin_us", 1, BIN_US_LIMIT)
+    """The lifecycle shared by the two kernels."""
 
     def begin_call(self, state: _Planes) -> None:
         pass
@@ -133,7 +127,10 @@ class StackedHistogram(_Temporal):
     """
 
     name = "stacked_histogram"
-    _MIN_BINS = 1
+
+    def __init__(self, *, bins: int, bin_us: int) -> None:
+        self._bins = _parameter(bins, "bins", 1)
+        self._bin_us = _parameter(bin_us, "bin_us", 1, BIN_US_LIMIT)
 
     def output_spec(self, sensor_size: tuple[int, int]) -> Spec:
         return (2, self._bins, *_hw(sensor_size)), np.dtype(np.uint32)
@@ -198,7 +195,10 @@ class VoxelGrid(_Temporal):
     """
 
     name = "voxel_grid"
-    _MIN_BINS = 2
+
+    def __init__(self, *, bins: int, bin_us: int) -> None:
+        self._bins = _parameter(bins, "bins", 2)
+        self._bin_us = _parameter(bin_us, "bin_us", 1, BIN_US_LIMIT)
 
     def output_spec(self, sensor_size: tuple[int, int]) -> Spec:
         return (self._bins, *_hw(sensor_size)), np.dtype(np.float32)
