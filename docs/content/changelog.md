@@ -81,6 +81,12 @@ pip install --upgrade frames2py
   [Waiting for a newer snapshot](https://siddiquifaras.github.io/frames2py/core/snapshots/#waiting-for-a-newer-snapshot),
   and the temporal kernels' bins and closing time in the
   [semantics table](https://siddiquifaras.github.io/frames2py/core/temporal-semantics/#the-closing-time).
+- An end-to-end notebook,
+  [`examples/live_observation.ipynb`](https://github.com/siddiquifaras/frames2py/blob/main/examples/live_observation.ipynb):
+  a live Engine on a synthetic stream, independent consumers waiting with
+  `wait_for_newer()`, one of them deliberately slow, a `reset()`, and a modest analysis.
+  It runs from a checkout with the new `notebook` dependency group, which is not a
+  dependency or an extra of the package.
 - [CONTRIBUTING.md](https://github.com/siddiquifaras/frames2py/blob/main/CONTRIBUTING.md)
   and [SECURITY.md](https://github.com/siddiquifaras/frames2py/blob/main/SECURITY.md), also
   shown under Development in the documentation.
@@ -89,6 +95,7 @@ pip install --upgrade frames2py
 
 - CI also runs once a month on `main`, including a job that installs the newest NumPy,
   extras and CPython builds instead of the lockfile's.
+- A separate `notebook.yml` workflow runs the end-to-end notebook against the built wheel.
 
 ### Upgrading from 1.0
 

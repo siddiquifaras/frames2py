@@ -11,7 +11,7 @@ Fails unless:
   in either;
 - no documentation-site source, tooling, build output or logo asset is in either;
 - the metadata carries the project's version, licence, Python floor, dependencies and extras,
-  and no package of the ``docs`` dependency group, in the dependencies or in any extra.
+  and no package of the ``docs`` or ``notebook`` dependency group, in the dependencies or in any extra.
 """
 
 from __future__ import annotations
@@ -80,8 +80,9 @@ def requirement_name(requirement: str) -> str:
 
 
 def docs_packages() -> set[str]:
+    """The packages of the documentation and notebook tooling, which the artifacts must never require."""
     groups = tomllib.loads((ROOT / "pyproject.toml").read_text()).get("dependency-groups", {})
-    return {requirement_name(r) for r in groups.get("docs", []) if isinstance(r, str)}
+    return {requirement_name(r) for group in ("docs", "notebook") for r in groups.get(group, []) if isinstance(r, str)}
 
 
 def check_metadata(errors: list[str], kind: str, text: str, version: str, requires_python: str,
@@ -100,7 +101,7 @@ def check_metadata(errors: list[str], kind: str, text: str, version: str, requir
         fail(errors, f"{kind}: extras {sorted(extras)}, expected {sorted(EXTRAS)}")
     for requirement in meta.get_all("Requires-Dist") or []:
         if requirement_name(requirement) in docs:
-            fail(errors, f"{kind}: documentation tooling in Requires-Dist: {requirement}")
+            fail(errors, f"{kind}: documentation or notebook tooling in Requires-Dist: {requirement}")
     unconditional = [r for r in meta.get_all("Requires-Dist") or [] if "extra ==" not in r]
     if unconditional != ["numpy>=2.4"]:
         fail(errors, f"{kind}: unconditional dependencies {unconditional}, expected ['numpy>=2.4']")

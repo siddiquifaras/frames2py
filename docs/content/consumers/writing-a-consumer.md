@@ -50,6 +50,17 @@ there is a newer one.
 - **No ordering promise across consumers.** Two consumers reading at the same moment may see
   different publications if one was published in between.
 
+## An end-to-end example
+
+[`examples/live_observation.ipynb`](https://github.com/siddiquifaras/frames2py/blob/main/examples/live_observation.ipynb)
+puts this pattern in a realistic setting: a producer replays a synthetic event stream at its
+own pace into two Engines, a tracker and a deliberately slow model-like consumer wait with
+`wait_for_newer()`, a monitor polls, the producer calls `reset()` between two segments, and
+the notebook shows from the snapshots' `sequence` and `watermark` what each consumer saw and
+how stale the slow one's results were. Its data is synthetic, generated in the notebook. It
+runs from a repository checkout with the `notebook` dependency group; see
+[Contributing](../development/contributing.md#the-end-to-end-notebook).
+
 ## Keeping up
 
 A consumer's own speed is its own concern. Frames2Py keeps only the latest snapshot and

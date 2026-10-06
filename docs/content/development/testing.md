@@ -24,6 +24,7 @@ Without the extras, the adapter, recorder and viewer tests that need a backend s
 | `tests/recorder/`, `tests/viewer/`, `tests/test_replay.py` | the recorder, the renderer and viewer loop, paced replay, and `windows()` over a reader |
 | `tests/test_docs.py` | the documentation: runnable examples and their output, the README quickstart, the API reference against the public API |
 | `tests/test_examples.py` | the programs in `examples/` |
+| `tests/test_notebook.py`, `tests/notebook.py` | the end-to-end notebook: the committed file is one clean run, and, with the `notebook` dependency group installed, it runs against the installed package |
 | `tests/test_benchmarks.py`, `tests/test_consumer_benchmarks.py` | the benchmark harness itself, not performance |
 
 The tests check observable behaviour against references that don't reuse the

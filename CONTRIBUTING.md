@@ -36,7 +36,7 @@ uv sync --all-extras     # also dv-processing, h5py, hdf5plugin and pyglet
 ```
 
 `uv sync` installs the `dev` dependency group: pytest, Hypothesis, pytest-timeout, mypy and
-pyflakes. The `docs` group is separate and only installed when asked for.
+pyflakes. The `docs` and `notebook` groups are separate and only installed when asked for.
 None of the groups is a dependency of the package: `import frames2py` needs NumPy only.
 
 ### Python versions
@@ -124,6 +124,27 @@ Python example in the README and the documentation and compares its output with 
   calling it undefined.
 - Update the [changelog](https://siddiquifaras.github.io/frames2py/changelog/) for any
   change a user would notice.
+
+## The end-to-end notebook
+
+`examples/live_observation.ipynb` runs a live pipeline on a deterministic synthetic stream:
+one producer, a tracker and a deliberately slow consumer waiting with `wait_for_newer()`, a
+monitor, `reset()`, and a modest analysis. It needs the `notebook` dependency group
+(nbclient, ipykernel, matplotlib), which nothing else installs:
+
+```sh
+uv run --group notebook --with jupyterlab jupyter lab examples/live_observation.ipynb   # to open it
+FRAMES2PY_REQUIRE_NOTEBOOK=1 uv run --group notebook pytest tests/test_notebook.py      # to check it
+uv run --group notebook python -m tests.notebook                                        # to re-run and save it
+```
+
+Any other notebook front end works too, with this checkout's environment as its kernel.
+The committed file must be one clean run, top to bottom: no errors, no stderr output, no
+local paths, no timing metadata, small images. `tests/test_notebook.py` checks that in every
+test run, and runs the notebook itself where the group is installed (the `notebook.yml`
+workflow). `python -m tests.notebook` re-runs it in a fresh kernel and rewrites it only if
+those checks pass; review the diff of its outputs before committing. The live part's
+numbers vary from run to run.
 
 ## Testing philosophy
 
@@ -269,8 +290,9 @@ show up as a failed run.
 Separate workflows, none of which the jobs above depend on: `recordings.yml` runs the suite
 against the real recordings every week; `torch.yml` runs the
 [PyTorch recipe](https://siddiquifaras.github.io/frames2py/consumers/pytorch/)'s tests
-against one pinned CPU build of PyTorch on every push. No job in `ci.yml` installs PyTorch.
-The documentation is
+against one pinned CPU build of PyTorch on every push; `notebook.yml` runs the end-to-end
+notebook with the `notebook` group on every push, on standard CPython 3.11 (Linux) and 3.14
+(macOS). No job in `ci.yml` installs PyTorch or the notebook group. The documentation is
 deployed to GitHub Pages from `main` by `pages.yml`.
 
 ## Releases (maintainers only)

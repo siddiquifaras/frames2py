@@ -53,6 +53,10 @@ extras.
    out, in about 20 lines.
 3. Read [Concepts](getting-started/concepts.md) for the vocabulary, then the
    [event contract](core/event-contract.md) before feeding real data.
+4. Run the end-to-end notebook,
+   [`examples/live_observation.ipynb`](https://github.com/siddiquifaras/frames2py/blob/main/examples/live_observation.ipynb),
+   from a checkout: a live Engine on a synthetic stream, a tracker and a deliberately slow
+   consumer waiting for snapshots, a `reset()`, and what each of them saw.
 
 ## What Frames2Py is not
 

@@ -156,6 +156,11 @@ The full documentation, with the event contract, kernel semantics, the snapshot 
 lifecycle model, adapters, the API reference and the benchmark methodology, is at
 **<https://siddiquifaras.github.io/frames2py/>**.
 
+An end-to-end notebook,
+[`examples/live_observation.ipynb`](https://github.com/siddiquifaras/frames2py/blob/main/examples/live_observation.ipynb),
+runs a live Engine on a synthetic event stream with a tracker, a deliberately slow consumer
+and a monitor, and shows what each of them saw. It runs from a checkout of the repository.
+
 ## Development
 
 ```sh
