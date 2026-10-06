@@ -19,6 +19,9 @@ Install `frames2py[recorder]` (h5py and hdf5plugin, the same backends as `frames
 --8<-- "record_read_back.out"
 ```
 
+The example runs from a checkout's `tests/data/`, which holds the recording it reads,
+`sparklers_100k.evt2.raw` ([EVT 2.0 and 3.0](evt.md)).
+
 The API is `recorder.open(path, *, sensor_size, group="events", compression="blosc",
 overwrite=False)`, which returns a recorder with `write(events)` and `close()`, used as a
 context manager. Full signatures: [API reference](../reference/api/tools.md).

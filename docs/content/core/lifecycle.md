@@ -110,7 +110,8 @@ progress.
   race was not reproduced in Frames2Py's tests.
 - **GIL enabled:** a free-threaded build running with the GIL enabled (for example
   `PYTHON_GIL=1`) behaves as a standard build and is treated as one.
-- **Throughput** on 3.14t has been measured on one machine (Apple M4); see
+- **Throughput** on 3.14t has been measured on one machine (Apple M4), with CPython 3.14.2t
+  and NumPy 2.4.6; 3.14.5 or later has not been measured. See
   [Performance](../reference/performance.md).
 
 The package metadata carries no free-threading classifier, because the classifiers can't

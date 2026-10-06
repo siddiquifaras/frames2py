@@ -44,17 +44,22 @@ None of the groups is a dependency of the package: `import frames2py` needs NumP
 Frames2Py supports CPython 3.11 to 3.14 and free-threaded CPython 3.14t with the GIL
 disabled ([Supported Python and platforms](https://siddiquifaras.github.io/frames2py/reference/support/)).
 The checkout's environment is 3.11, the floor. To run the suite on another version without
-touching it, ask uv for a temporary environment, naming the build explicitly:
+touching it, install the interpreters once (uv doesn't download one for a `3.14+gil`
+request), then ask uv for a temporary environment, naming the build explicitly:
 
 ```sh
+uv python install 3.14 3.14t
 uv run --isolated --python 3.14+gil --all-extras pytest   # standard CPython 3.14
 uv run --isolated --python 3.14t --all-extras pytest      # free-threaded CPython 3.14
 ```
 
 On a free-threaded build, the `Engine` refuses every minor version other than 3.14 with the
 GIL disabled (`RuntimeError`), and 3.14.5 or later is recommended. Check that the GIL really
-is disabled with all extras loaded, as CI does:
-`python -c "import sys; print(sys._is_gil_enabled())"` after importing them.
+is disabled with every extra loaded, as CI does; this prints `False`:
+
+```sh
+uv run --isolated --python 3.14t --all-extras python -c "import sys, frames2py, frames2py.adapters.aedat4, frames2py.adapters.hdf5, frames2py.recorder, frames2py.viewer, h5py, hdf5plugin, dv_processing, pyglet; print(sys._is_gil_enabled())"
+```
 
 ## Running the tests
 
@@ -254,8 +259,10 @@ has the full procedure. What matters for a result anyone else can use:
 
 ## Pull requests
 
-1. Fork the repository (or, for maintainers, branch from `main`). `main` is protected:
-   changes reach it through pull requests, and the CI checks must pass.
+1. Fork the repository (or, for maintainers, branch from `main`), and open a pull request.
+   `main` is protected: a commit reaches it only after the required CI checks have passed
+   on it, and force pushes and deletion are refused. The protection doesn't itself require
+   a pull request.
 2. Keep each commit one coherent change, with a subject of the form `<type>: <description>`
    (`feat`, `bug`, `test`, `docs`, `perf`, `refactor`, `chore`, `updated`), for example
    `bug: reject out of range timestamps atomically`. A body, if useful, is two or three
@@ -313,7 +320,7 @@ exactly the version in `pyproject.toml`, that the tagged commit is on `main`, an
 version. It then builds the wheel and sdist once, audits them, runs the test suite against
 them as installed, uploads those same files to PyPI through trusted publishing once a
 maintainer approves the deployment, and only after that creates the GitHub Release, with the
-changelog section as its notes. There is no other way to publish.
+changelog section as its notes. No other workflow in this repository publishes to PyPI.
 
 A version bump therefore changes `pyproject.toml`, `__version__` and `uv.lock`, and adds the
 version's changelog section; the test suite fails if the section is missing. A published

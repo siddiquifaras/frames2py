@@ -91,6 +91,9 @@ without publication):
 --8<-- "engine_windows.out"
 ```
 
+The example runs from a checkout's `tests/data/`, which holds the recording it reads,
+`sparklers_100k.evt2.raw` ([EVT 2.0 and 3.0](../data/evt.md)).
+
 ## `stats`
 
 An `EngineStats`, a frozen dataclass, built when you read the property. Takes no lock.

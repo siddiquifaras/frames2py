@@ -58,8 +58,8 @@ The core needs NumPy and nothing else. It is pure Python (a `py3-none-any` wheel
   ([Architecture](../core/architecture.md#how-the-hand-off-works)).
 - **No classifier:** the package metadata carries no free-threading Trove classifier,
   because the classifiers can't say "3.14t only".
-- **Throughput** on 3.14t has been measured on one Apple M4; see
-  [Performance](performance.md).
+- **Throughput** on 3.14t has been measured on one Apple M4, with CPython 3.14.2t and NumPy
+  2.4.6; 3.14.5 or later has not been measured. See [Performance](performance.md).
 
 ## CPython 3.15
 
@@ -123,6 +123,10 @@ details.
 - **No live camera adapters.** Frames2Py ships file adapters only; a camera enters through
   your vendor SDK's buffers converted to `EVENT_DTYPE` and passed to `ingest()`
   ([Adapters](../data/adapters.md)).
+- **EVT decoding covers CD events only;** triggers and monitoring words are skipped
+  ([EVT 2.0 and 3.0](../data/evt.md#the-header)).
+- **AEDAT4 has platform limits:** `frames2py[aedat4]` has no wheel for macOS before 15, and
+  on Linux it needs the system `libatomic1` library ([above](#platform-limits)).
 - **No cross-process snapshots.** Consumers are threads in the producer's process; another
   process can't read an Engine's snapshots.
 - **Performance figures come from one machine,** an Apple M4. No x86_64, Linux or edge
@@ -136,12 +140,17 @@ details.
   end the process, so 3.14.5 or later is recommended ([above](#free-threaded-cpython)).
   CPython 3.15 is not supported yet.
 - **No timer thread.** Publication happens only in `ingest()` and `stop()`: a producer that
-  pauses without `stop()` leaves its pending window unpublished, and a temporal kernel's
-  newest bin hidden ([Engine](../core/engine.md#publication-cadence)).
+  pauses without `stop()` leaves its pending window unpublished
+  ([Engine](../core/engine.md#publication-cadence)).
+- **A temporal kernel's newest bin stays hidden** until an event crosses the next bin edge;
+  `stop()` doesn't show it ([Kernels](../core/kernels.md#bins-on-the-event-time-grid)).
 - **`time_surface` can't tell an event at `t = 0` from no event**
   ([Kernels](../core/kernels.md#timesurface)).
 - **The viewer draws single frames only;** temporal frames raise `TypeError`
   ([Kernels](../core/kernels.md#viewing-and-offline-frames)).
+- **`windows()` can't detect a custom kernel whose result depends on how events are split
+  into calls;** its frames then depend on the split points
+  ([Replay](../data/replay.md#frames-in-event-time)).
 - **On CPython 3.11 and 3.12, a later thread can be taken for an exited producer** that was
   created outside `threading`: if another thread created outside `threading` gets its
   thread ident, that thread is treated as the producer

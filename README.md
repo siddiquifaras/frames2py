@@ -80,7 +80,8 @@ ingested: 10000 out of bounds: 0
 ```
 
 In a live program, `ingest()` runs in the producer's own loop on its own thread, and consumers
-such as the viewer (`frames2py.viewer.run(engine.snapshot)`) read `snapshot()` elsewhere.
+read `snapshot()` elsewhere. The viewer, for example, needs the `viewer` extra and runs on the
+main thread: `from frames2py import viewer`, then `viewer.run(engine.snapshot)`.
 
 ## Installation
 
@@ -129,7 +130,8 @@ recipe, with dtypes and devices, is
 ## Performance
 
 On one Apple M4 (16 GB), the v1 performance gate measured all 150 of its cells above 20M
-events/s, on CPython 3.11 and free-threaded 3.14t. No other hardware has been measured.
+events/s, on CPython 3.11.14 and free-threaded 3.14.2t, both with NumPy 2.4.6. No other
+hardware has been measured, and 3.14.5 or later has not been measured.
 The two temporal kernels added in 1.1 have a gate of their own, which they don't meet in
 every cell: see [Throughput](https://siddiquifaras.github.io/frames2py/core/kernels/#throughput).
 

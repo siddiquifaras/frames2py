@@ -116,6 +116,9 @@ versions and platforms and the NumPy floor are unchanged;
 [Supported Python and platforms](https://siddiquifaras.github.io/frames2py/reference/support/).
 
 - The licence changes from MIT to Apache 2.0 (above).
+- On free-threaded CPython 3.14t, 3.14.5 or later is now recommended: 3.14.0 to 3.14.4 have
+  a CPython race that can end the process
+  ([Free-threaded CPython](https://siddiquifaras.github.io/frames2py/reference/support/#free-threaded-cpython)).
 - A custom kernel you want to use with `replay.windows()` must handle a `read()` time later
   than its own watermark (above).
 - Two internal changes speed up 1.0 paths without changing their results: the Accumulator

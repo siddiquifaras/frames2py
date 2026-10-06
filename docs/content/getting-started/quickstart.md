@@ -37,7 +37,7 @@ What happened:
 - **Other representations.** Swap `"event_count"` for another [kernel](../core/kernels.md):
   `"polarity"`, `"time_surface"`, `frames2py.ExpDecay(0.9)`,
   `frames2py.TimestampDecay(10_000.0)`, or a temporal kernel such as
-  `frames2py.VoxelGrid(bins=5, bin_us=10_000)`.
+  `frames2py.VoxelGrid(bins=5, bin_us=1_000)`.
 - **Frames for a model.** [Handing snapshots to PyTorch](../consumers/pytorch.md) shows the
   copy, dtype and device steps; [`replay.windows()`](../data/replay.md#frames-in-event-time)
   turns a recording into frames at fixed steps of event time.

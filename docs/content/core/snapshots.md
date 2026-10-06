@@ -205,11 +205,12 @@ here holds for other hardware, kernels or workloads without measuring them.
 
     With 1 and 4 consumers, waiters' median freshness was under a millisecond and they saw
     every publication; pollers saw each state up to a poll interval later and missed 2-8%
-    of the publications. With 4 and 8 consumers, waiting cost the producer more busy time
-    per event than polling: every waiter is woken by the same publication and renders while
-    the producer is still working (an inference from the design, not measured). With 8
-    rendering consumers on 3.11.14, which share one GIL with the producer, the producer kept
-    up in neither arm: it ingested 0.59-0.60 of the offered events.
+    of the publications. With 4 consumers on both runtimes, and 8 on 3.14.2t, waiting cost
+    the producer more busy time per event than polling: every waiter is woken by the same
+    publication and renders while the producer is still working (an inference from the
+    design, not measured). With 8 rendering consumers on 3.11.14, which share one GIL with
+    the producer, the producer kept up in neither arm: it ingested 0.59-0.60 of the offered
+    events.
 
 **What the numbers mean.** *Freshness* is the time from the start of the `ingest()` call
 that ingested the newest event in the state a consumer received, to the moment the
