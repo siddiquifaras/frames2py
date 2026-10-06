@@ -5,6 +5,10 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="https://github.com/siddiquifaras/frames2py/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/siddiquifaras/frames2py/ci.yml?branch=main&label=CI&style=flat-square"></a> <a href="https://github.com/siddiquifaras/frames2py/blob/main/LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square"></a> <a href="https://siddiquifaras.github.io/frames2py/reference/support/"><img alt="Python: 3.11 to 3.14, and 3.14t" src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14%20%7C%203.14t-grey?style=flat-square"></a> <a href="https://siddiquifaras.github.io/frames2py/reference/support/"><img alt="Platforms: Linux, macOS arm64" src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20arm64-grey?style=flat-square"></a> <a href="https://pypi.org/project/frames2py/"><img alt="Version on PyPI" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fpypi.org%2Fpypi%2Fframes2py%2Fjson&query=%24.info.version&label=version&color=brightgreen&style=flat-square"></a>
+</p>
+
 **Live, decoupled observation of event-camera state.**
 
 **Documentation: <https://siddiquifaras.github.io/frames2py/>**
