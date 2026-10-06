@@ -13,6 +13,11 @@ uv run pytest
 Without the extras, the adapter, recorder and viewer tests that need a backend skip. Set
 `FRAMES2PY_REQUIRE_EXTRAS=1` to turn those skips into failures, as CI does.
 
+PyTorch and the `notebook` dependency group are not extras, and no job in `ci.yml` installs
+them. Without PyTorch the PyTorch recipe's tests skip, and without the group the notebook's
+execution test skips. `FRAMES2PY_REQUIRE_TORCH=1` and `FRAMES2PY_REQUIRE_NOTEBOOK=1` turn
+those skips into failures, as their own workflows, `torch.yml` and `notebook.yml`, do.
+
 ## What the suite covers
 
 | path | what it checks |
@@ -96,6 +101,7 @@ edit.
 uv run pyflakes src tests benchmarks examples docs .github/scripts
 uv run mypy src/frames2py
 uv run mypy benchmarks
+uv run mypy --strict .github/scripts
 ```
 
 There is no formatter; formatting is not checked.

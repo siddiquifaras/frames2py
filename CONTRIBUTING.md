@@ -68,6 +68,12 @@ uv run python -m tests.recordings download            # about 400 MB of public r
 uv run pytest tests/adapters --recordings
 ```
 
+- Tests that need something the default environment lacks skip without it, and a flag turns
+  each skip into a failure: `FRAMES2PY_REQUIRE_EXTRAS=1` for a missing extra (CI's test jobs
+  set it), `FRAMES2PY_REQUIRE_TORCH=1` for PyTorch (the PyTorch recipe's tests; `torch.yml`
+  sets it) and `FRAMES2PY_REQUIRE_NOTEBOOK=1` for the `notebook` group (the notebook's
+  execution test; `notebook.yml` sets it). `ci.yml` installs neither PyTorch nor the
+  `notebook` group, so those tests skip there.
 - The slow tests accumulate 2^32 events or more, to check the documented count and numerator
   wrap-around. The voxel-grid one takes several minutes. CI runs them on Linux x86_64 with
   CPython 3.11.
