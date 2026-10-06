@@ -11,9 +11,9 @@ is also the GitHub Release text. The tests fail when pyproject.toml's version ha
 
 ## 1.1.0
 
-A release that adds to 1.0 without changing what 1.0 code does: waiting for a newer
-snapshot, two temporal representations for event-vision models, frames at fixed steps of
-event time, and a tested recipe for handing snapshots to PyTorch.
+A release that adds to 1.0 without changing what 1.0 code does, apart from one fix (below):
+waiting for a newer snapshot, two temporal representations for event-vision models, frames
+at fixed steps of event time, and a tested recipe for handing snapshots to PyTorch.
 
 ```sh
 pip install --upgrade frames2py
@@ -67,6 +67,15 @@ pip install --upgrade frames2py
   through them behaves as in 1.0. The seven built-in kernels follow the rule. Details:
   [Custom kernels](https://siddiquifaras.github.io/frames2py/core/kernels/#custom-kernels).
 
+### Fixes
+
+- **The producer check follows the thread, not its thread ident.** CPython can give a new
+  thread the ident of one that has exited. Since 1.0, `ingest()` from a thread started after
+  the producer exited was accepted when that thread got the producer's ident; it now raises
+  `RuntimeError`, as documented, and such a thread may call `wait_for_newer()`. One case
+  remains on CPython 3.11 and 3.12, for threads created outside `threading`:
+  [Known limitations](https://siddiquifaras.github.io/frames2py/reference/support/#known-limitations).
+
 ### Documentation
 
 - The consumer pattern now waits with `wait_for_newer()`, with polling as the alternative
@@ -102,8 +111,9 @@ pip install --upgrade frames2py
 Nothing needs to change. The event contract, the five 1.0 kernels and their outputs,
 `Accumulator`, `Engine` (`ingest()`, `snapshot()`, `stats`, the cadence and the
 lifecycle), `Snapshot` and the publisher, the adapters, the recorder, `paced()` and the
-viewer behave as in 1.0. The supported Python versions and platforms and the NumPy floor are
-unchanged; [Supported Python and platforms](https://siddiquifaras.github.io/frames2py/reference/support/).
+viewer behave as in 1.0, apart from the producer-check fix above. The supported Python
+versions and platforms and the NumPy floor are unchanged;
+[Supported Python and platforms](https://siddiquifaras.github.io/frames2py/reference/support/).
 
 - The licence changes from MIT to Apache 2.0 (above).
 - A custom kernel you want to use with `replay.windows()` must handle a `read()` time later

@@ -142,6 +142,10 @@ details.
   ([Kernels](../core/kernels.md#timesurface)).
 - **The viewer draws single frames only;** temporal frames raise `TypeError`
   ([Kernels](../core/kernels.md#viewing-and-offline-frames)).
+- **On CPython 3.11 and 3.12, a later thread can be taken for an exited producer** that was
+  created outside `threading`: if another thread created outside `threading` gets its
+  thread ident, that thread is treated as the producer
+  ([Lifecycle and threads](../core/lifecycle.md#threads)).
 - **An interrupted producer can strand one waiter.** If Ctrl-C interrupts the producer
   during a publication, one `wait_for_newer()` call may stay blocked until its timeout
   ([Snapshots](../core/snapshots.md#waiting-for-a-newer-snapshot)).

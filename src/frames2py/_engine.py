@@ -108,7 +108,7 @@ class Engine:
         self._interval_ns = snapshot_interval_ms * 1e6
         self._created_ns = time.monotonic_ns()
         self._lifecycle = threading.Lock()
-        self._producer: int | None = None
+        self._producer: threading.Thread | None = None
         self._running = True
         self._sequence = 0
         self._events_ingested = 0
@@ -125,9 +125,9 @@ class Engine:
         ``ValueError`` if any event has ``t >= 2**63``, in both cases before any state or
         statistic changes.
         """
-        caller = threading.get_ident()
+        caller = threading.current_thread()
         with self._lifecycle:
-            if self._producer is not None and caller != self._producer:
+            if self._producer is not None and caller is not self._producer:
                 raise RuntimeError("ingest() called from a thread other than the producer's")
             if not self._running:
                 self._producer = caller
@@ -187,7 +187,7 @@ class Engine:
         """
         floor = _sequence_floor(sequence)
         deadline = _deadline(timeout)
-        if threading.get_ident() == self._producer:
+        if threading.current_thread() is self._producer:
             raise RuntimeError("wait_for_newer() called on the producer's thread")
         while True:
             expired = deadline is not None and time.monotonic() >= deadline

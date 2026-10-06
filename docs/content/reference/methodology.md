@@ -5,6 +5,11 @@ file contains, and how to measure your own machine. The benchmark suite lives in
 repository's `benchmarks/` directory. It is not part of the installed package, so every
 command below runs from a checkout.
 
+**Code measured.** The temporal-kernel gate and the `wait_for_newer` measurement were each
+measured at the commits recorded in their sections below. The Engine's producer-thread check
+changed after both: `ingest()` now looks up the calling thread's object instead of its
+thread ident, one lookup and one comparison per call. That change was not re-measured.
+
 ## The gate, precisely
 
 The gate's method was written down in `benchmarks/gate_preregistration.md` before the first

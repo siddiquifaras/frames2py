@@ -233,15 +233,15 @@ def test_every_interleaving_matches_a_sequential_run(name: str) -> None:
 
 class _RunningCheckedBeforeTheLock(impl.Engine):
     def ingest(self, events: Any) -> None:
-        caller = threading.get_ident()
+        caller = threading.current_thread()
         if not self._running:
             return
         with self._lifecycle:
-            if self._producer is not None and caller != self._producer:
+            if self._producer is not None and caller is not self._producer:
                 raise RuntimeError("not the producer")
             self._ingest_locked(events, caller)
 
-    def _ingest_locked(self, events: Any, caller: int) -> None:
+    def _ingest_locked(self, events: Any, caller: threading.Thread) -> None:
         inside = self._accumulator._accumulate(events)
         self._producer = caller
         self._events_ingested += len(events)
@@ -256,7 +256,7 @@ class _NoOwnershipCheck(_RunningCheckedBeforeTheLock):
     def ingest(self, events: Any) -> None:
         with self._lifecycle:
             if self._running:
-                self._ingest_locked(events, threading.get_ident())
+                self._ingest_locked(events, threading.current_thread())
 
 
 class _ResetInTwoSteps(impl.Engine):

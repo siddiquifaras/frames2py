@@ -39,6 +39,14 @@ def elsewhere(call: Callable[[], Any]) -> Any:
     return box[0]
 
 
+def outcome(call: Callable[[], Any]) -> Any:
+    """*call*'s result, or the exception it raised."""
+    try:
+        return call()
+    except Exception as error:  # noqa: BLE001 - returned to the caller
+        return error
+
+
 def observe(engine: Any) -> tuple[Any, ...]:
     stats = engine.stats
     snap = engine.snapshot()
@@ -88,6 +96,61 @@ class TestProducerOwnership:
         engine.ingest(events((1, 1, 1, 0)))
         engine.stop()
         assert isinstance(elsewhere(lambda: engine.ingest(events((2, 2, 2, 0)))), RuntimeError)
+
+
+@requires_supported_runtime
+class TestProducerIdentity:
+    """CPython can give a new thread the ident of a thread that has exited."""
+
+    def test_the_producer_ingests_and_cannot_wait(self) -> None:
+        engine = KERNELS["event_count"].engine(interval_ms=0.0)
+        engine.ingest(events((1, 1, 1, 0)))
+        engine.ingest(events((2, 2, 2, 0)))
+        assert engine.stats.events_ingested == 2
+        with pytest.raises(RuntimeError):
+            engine.wait_for_newer(None, timeout=0)
+
+    def test_another_live_thread_waits_and_cannot_ingest(self) -> None:
+        engine = KERNELS["event_count"].engine(interval_ms=0.0)
+        engine.ingest(events((1, 1, 1, 0)))
+        snap = engine.snapshot()
+        before = observe(engine)
+
+        def other() -> tuple[Any, Any]:
+            return outcome(lambda: engine.wait_for_newer(None, timeout=0)), outcome(
+                lambda: engine.ingest(events((2, 2, 2, 0)))
+            )
+
+        waited, ingested = elsewhere(other)
+        assert waited is snap
+        assert isinstance(ingested, RuntimeError)
+        assert observe(engine) == before
+
+    def test_a_thread_started_after_the_producer_exits_is_another_thread(
+        self, record_testsuite_property: Callable[[str, object], None]
+    ) -> None:
+        engine = KERNELS["event_count"].engine(interval_ms=0.0)
+
+        def produce() -> int:
+            engine.ingest(events((1, 1, 1, 0)))
+            return threading.get_ident()
+
+        producer_ident = elsewhere(produce)
+        snap = engine.snapshot()
+        before = observe(engine)
+
+        def later() -> tuple[int, Any, Any]:
+            return (
+                threading.get_ident(),
+                outcome(lambda: engine.wait_for_newer(None, timeout=0)),
+                outcome(lambda: engine.ingest(events((2, 2, 2, 0)))),
+            )
+
+        ident, waited, ingested = elsewhere(later)
+        record_testsuite_property("producer_ident_reused", ident == producer_ident)
+        assert waited is snap
+        assert isinstance(ingested, RuntimeError)
+        assert observe(engine) == before
 
 
 @requires_supported_runtime

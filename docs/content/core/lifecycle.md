@@ -30,6 +30,15 @@ one rejected with `TypeError` or `ValueError` doesn't. `ingest()` from any other
 raises `RuntimeError` and changes nothing. An Engine is not multi-producer; a different
 producer thread needs a new Engine.
 
+The producer is its `threading` thread object, not its thread ident: a thread started after
+the producer exits is another thread, even when CPython gives it the producer's ident. One
+case remains on CPython 3.11 and 3.12. A thread created outside `threading`, by C code such
+as a vendor SDK's callback thread, is represented by a dummy thread object that those
+versions keep after the thread ends. If such a thread is the producer and exits, and a later
+thread created outside `threading` gets its ident, the later thread is given the same object
+and treated as the producer: its `ingest()` is accepted and its `wait_for_newer()` refused.
+CPython 3.13 and later discard the dummy object when its thread ends.
+
 **Any number of consumers.** `snapshot()` and `stats` may be called from any thread, at any
 time, and take no lock. `wait_for_newer()` may be called from any thread but the producer's
 (it raises `RuntimeError` there); it never takes the lifecycle lock, and `stop()` and
