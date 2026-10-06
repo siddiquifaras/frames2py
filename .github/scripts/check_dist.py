@@ -89,7 +89,7 @@ def check_metadata(errors: list[str], kind: str, text: str, version: str, requir
     meta = Parser().parsestr(text)
     if meta["Version"] != version:
         fail(errors, f"{kind}: Version {meta['Version']}, expected {version}")
-    if meta["License-Expression"] != "MIT" or meta.get_all("License-File") != ["LICENSE"]:
+    if meta["License-Expression"] != "Apache-2.0" or meta.get_all("License-File") != ["LICENSE"]:
         fail(errors, f"{kind}: licence metadata {meta['License-Expression']!r} {meta.get_all('License-File')!r}")
     if any(c.startswith("License ::") for c in meta.get_all("Classifier") or []):
         fail(errors, f"{kind}: legacy licence classifier present")

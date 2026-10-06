@@ -170,4 +170,7 @@ See [Testing](https://siddiquifaras.github.io/frames2py/development/testing/) an
 
 ## License
 
-MIT. See [LICENSE](https://github.com/siddiquifaras/frames2py/blob/main/LICENSE).
+Copyright 2026 Faras Siddiqui. From 1.1.0, Frames2Py is licensed under the Apache License,
+Version 2.0: see [LICENSE](https://github.com/siddiquifaras/frames2py/blob/main/LICENSE).
+Releases 1.0.0rc1 and 1.0.0 were published under the MIT License, which still applies to
+them.

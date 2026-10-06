@@ -70,3 +70,7 @@ changing it incompatibly needs a 2.0. Frames2Py is maintained on a best-effort b
 Performance figures are measurements on one machine, with their conditions: see
 [Performance](reference/performance.md). What it doesn't do or support is collected under
 [Known limitations](reference/support.md#known-limitations).
+
+Frames2Py is licensed under the Apache License, Version 2.0, from 1.1.0 on
+([LICENSE](https://github.com/siddiquifaras/frames2py/blob/main/LICENSE)). Releases 1.0.0rc1
+and 1.0.0 were published under the MIT License, which still applies to them.

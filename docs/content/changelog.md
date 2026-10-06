@@ -19,6 +19,13 @@ event time, and a tested recipe for handing snapshots to PyTorch.
 pip install --upgrade frames2py
 ```
 
+### Licence
+
+- **Frames2Py is licensed under the Apache License, Version 2.0, from this release on.**
+  1.0.0rc1 and 1.0.0 were published under the MIT License and stay under it: their files on
+  PyPI keep their MIT licence file and metadata. The licence text is in
+  [LICENSE](https://github.com/siddiquifaras/frames2py/blob/main/LICENSE).
+
 ### New
 
 - **`Engine.wait_for_newer(sequence, *, timeout=None)`** blocks until a snapshot newer than
@@ -83,6 +90,7 @@ lifecycle), `Snapshot` and the publisher, the adapters, the recorder, `paced()` 
 viewer behave as in 1.0. The supported Python versions and platforms and the NumPy floor are
 unchanged; [Supported Python and platforms](https://siddiquifaras.github.io/frames2py/reference/support/).
 
+- The licence changes from MIT to Apache 2.0 (above).
 - A custom kernel you want to use with `replay.windows()` must handle a `read()` time later
   than its own watermark (above).
 - Two internal changes speed up 1.0 paths without changing their results: the Accumulator
