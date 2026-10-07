@@ -1,7 +1,8 @@
 # Event contract
 
 Everything that enters Frames2Py, through `Engine.ingest()`, `Accumulator.accumulate()`,
-the recorder's `write()` or `replay.paced()`, is a NumPy array of events with this layout.
+the recorder's `write()`, `replay.paced()` or `replay.windows()`, is a NumPy array of events
+with this layout.
 
 ## `EVENT_DTYPE`
 
@@ -149,8 +150,9 @@ leaves it where it was. Out-of-bounds events never move it, and neither does pub
 the end of a window.
 
 It is `Accumulator.watermark`, and each snapshot's `SnapshotMeta.watermark` is its value at
-publication. `timestamp_decay` evaluates its surface at it; the viewer's `time_surface`
-rendering fades pixels relative to it.
+publication. `timestamp_decay` evaluates its surface at it, the temporal kernels show the
+completed time bins before it, and the viewer's `time_surface` rendering fades pixels
+relative to it.
 
 ## Exceptions
 
@@ -183,7 +185,10 @@ inside one call or between calls):
   the restarted clock's timestamps;
 - `timestamp_decay`: each restarted-clock event contributes `exp(-(T - t) / tau_us)` at the
   unchanged watermark `T`, which for a large jump reads as 0; earlier contributions are
-  unchanged.
+  unchanged;
+- `stacked_histogram` and `voxel_grid`: the frame stays on the bins before the old
+  watermark, so the restarted clock's events are older than the frame and count for
+  nothing.
 
 **A forward spike**, one far-future timestamp:
 
@@ -191,7 +196,11 @@ inside one call or between calls):
 - counts and `exp_decay` as above; in `time_surface` only the spike's pixel changes;
 - `timestamp_decay`: everything is now evaluated at the spike's time, so the other pixels,
   including events arriving after the spike with ordinary timestamps, decay by however far
-  the spike is ahead of them, which for a large spike reads as 0.
+  the spike is ahead of them, which for a large spike reads as 0;
+- `stacked_histogram` and `voxel_grid`: the frame moves to the bins just before the spike's,
+  so it shows zeros: earlier events, and ordinary events arriving after the spike, are
+  older than the frame. `replay.windows()` yields a frame for every boundary up to the
+  spike.
 
 **Recovery:** after `reset()`, a clean timestamp sequence gives the same result as a fresh
 Accumulator or Engine. The Engine's `snapshot()` is `None` until the next publication, which

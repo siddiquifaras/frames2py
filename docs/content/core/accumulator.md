@@ -17,9 +17,10 @@ that runs in step with its input.
 ## Constructor
 
 - `sensor_size`: `(width, height)`. The representation is `(height, width)`, or
-  `(height, width, 2)` for `polarity`.
+  `(height, width, 2)` for `polarity`; the temporal kernels are time-first, `(2, bins, height,
+  width)` for `StackedHistogram` and `(bins, height, width)` for `VoxelGrid`.
 - `kernel`: a configured kernel instance (`frames2py.ExpDecay(0.9)`,
-  `frames2py.TimestampDecay(10_000.0)`, any object implementing the
+  `frames2py.TimestampDecay(10_000.0)`, `frames2py.VoxelGrid(bins=5, bin_us=1_000)`, any object implementing the
   [Kernel protocol](../reference/api/kernels.md)), or one of the names `"event_count"`,
   `"polarity"`, `"time_surface"` for the kernels without parameters. Any other name raises
   `ValueError`. Unlike `Engine`, `Accumulator` has no default kernel.

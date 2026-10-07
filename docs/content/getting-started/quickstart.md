@@ -27,12 +27,17 @@ What happened:
 ## Next
 
 - **A producer thread and a consumer.** This is what the Engine is for: the producer calls
-  `ingest()` in its own loop, and consumers read `snapshot()` whenever they like. See
+  `ingest()` in its own loop, and consumers read `snapshot()` whenever they like, or wait
+  for the next publication with `wait_for_newer()`. See
   [Writing a consumer](../consumers/writing-a-consumer.md) for a runnable example.
 - **Watch it.** The [viewer](../consumers/viewer.md) shows an Engine's snapshots in a
   window: `viewer.run(engine.snapshot)` on the main thread, with the producer on another.
 - **Real data.** Read a recording with a [file adapter](../data/adapters.md), or feed your
   camera SDK's buffers converted to `EVENT_DTYPE`.
 - **Other representations.** Swap `"event_count"` for another [kernel](../core/kernels.md):
-  `"polarity"`, `"time_surface"`, `frames2py.ExpDecay(0.9)` or
-  `frames2py.TimestampDecay(10_000.0)`.
+  `"polarity"`, `"time_surface"`, `frames2py.ExpDecay(0.9)`,
+  `frames2py.TimestampDecay(10_000.0)`, or a temporal kernel such as
+  `frames2py.VoxelGrid(bins=5, bin_us=1_000)`.
+- **Frames for a model.** [Handing snapshots to PyTorch](../consumers/pytorch.md) shows the
+  copy, dtype and device steps; [`replay.windows()`](../data/replay.md#frames-in-event-time)
+  turns a recording into frames at fixed steps of event time.

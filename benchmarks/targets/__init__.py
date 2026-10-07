@@ -88,7 +88,28 @@ def _v1_engine() -> Target:
     return V1EngineTarget()
 
 
+def _temporal_kernel() -> Target:
+    from benchmarks.targets.temporal import TemporalKernelTarget
+
+    return TemporalKernelTarget()
+
+
+def _temporal_engine() -> Target:
+    from benchmarks.targets.temporal import TemporalEngineTarget
+
+    return TemporalEngineTarget()
+
+
+def _temporal_planes() -> Target:
+    from benchmarks.targets.temporal import TemporalPlanesTarget
+
+    return TemporalPlanesTarget()
+
+
 TARGETS: Final[dict[str, Callable[[], Target]]] = {
     "v1-kernel": _v1_kernel,
     "v1-engine": _v1_engine,
+    "temporal-kernel": _temporal_kernel,
+    "temporal-engine": _temporal_engine,
+    "temporal-planes": _temporal_planes,
 }

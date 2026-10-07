@@ -1,4 +1,5 @@
-"""``frames2py.replay.paced``: timing against a fake clock, discontinuities, identity, errors."""
+"""``frames2py.replay``: ``paced`` timing against a fake clock, discontinuities, identity, errors; ``windows``
+over a reader."""
 
 from __future__ import annotations
 
@@ -154,3 +155,26 @@ class TestArguments:
         before = threading.active_count()
         list(paced([batch(0), batch(1_000)], clock=clock, sleep=clock.sleep))
         assert threading.active_count() == before
+
+
+def test_windows_over_a_reader_equals_windows_over_its_events_in_one_batch() -> None:
+    from frames2py import StackedHistogram
+    from frames2py.adapters import evt
+    from frames2py.replay import windows
+
+    with evt.open(DATA / "active_marker_head.evt3.raw") as reader:
+        size = reader.sensor_size
+        assert size is not None
+        whole = np.concatenate([b.copy() for b in reader])
+    frames = nonempty = 0
+    with evt.open(DATA / "active_marker_head.evt3.raw") as reader:
+        # Frame by frame: at 1280x720 each frame is 22 MB, too many to hold at once.
+        for (t_read, read), (t_whole, expected) in zip(
+            windows(reader, size, StackedHistogram(bins=3, bin_us=500), every_us=1_000),
+            windows([whole], size, StackedHistogram(bins=3, bin_us=500), every_us=1_000),
+            strict=True,
+        ):
+            assert t_read == t_whole and np.array_equal(read, expected)
+            frames += 1
+            nonempty += bool(read.any())
+    assert frames > 1 and nonempty

@@ -1,7 +1,7 @@
 """Record a real recording's events while an Engine ingests them, then read the recording back.
 
-The source is the committed EVT 2.0 excerpt of Prophesee's CC0 ``sparklers`` recording, or any
-EVT, AEDAT4 or HDF5 file you name. Each batch goes to ``recorder.write()`` and to
+The source is the committed EVT 2.0 excerpt of Prophesee's CC0 ``sparklers`` recording, or
+another EVT file you name. Each batch goes to ``recorder.write()`` and to
 ``engine.ingest()`` on the same thread; the Engine never calls the recorder. The recording is
 then read back with ``frames2py.adapters.hdf5`` and compared event by event.
 

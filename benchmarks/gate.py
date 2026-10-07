@@ -25,6 +25,15 @@ The band is uncertainty around the requirement, not a different requirement.
 
 A cell passes only if both levels pass. A runtime meets the gate only if every
 gate cell passes on it.
+
+Documents of the ``temporal-gate`` suite are classified against the temporal-kernel gate's
+cells (``benchmarks/temporal_gate_preregistration.md``), with its further rules: a cell is
+also ``invalid`` if its document or any of its runs was not on AC power, or had Low Power
+Mode on, at its start or end; those problems are marked as environment problems, the only
+ones that may be re-run. Each level's document must end, as it started, on a clean tree at
+the same commit, and every run of both levels must record the same ``src/`` tree hash, or
+the documents are not classified. Documents of any other suite are classified
+against the v1 gate, as before.
 """
 
 from __future__ import annotations
@@ -34,7 +43,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any, Final
 
 from benchmarks import power
-from benchmarks.matrix import GATE_THRESHOLD_EVENTS_PER_S, REFERENCE_MACHINE, Cell, gate_cells
+from benchmarks.matrix import GATE_THRESHOLD_EVENTS_PER_S, REFERENCE_MACHINE, Cell, gate_cells, temporal_gate_cells
 from benchmarks.measure import run_throughput
 
 REQUIREMENT: Final = GATE_THRESHOLD_EVENTS_PER_S
@@ -45,6 +54,36 @@ STAGE2_RUNS: Final = 20
 STAGE2_REQUIRED_AT_REQUIREMENT: Final = 18
 
 RUNTIME_KEYS: Final = ("python", "free_threaded_build", "gil_enabled", "numpy")
+TEMPORAL_SUITE: Final = "temporal-gate"
+AC_POWER: Final = "AC Power"
+ENVIRONMENT_PROBLEMS: Final = ("environment:", "the machine slept", "the run ended outside full wake")
+"""Prefixes of the problems that come from the environment controls rather than the results."""
+
+
+def cells_for(document: Mapping[str, Any]) -> tuple[Cell, ...]:
+    """The gate cells *document* is classified against, by its suite."""
+    return temporal_gate_cells() if document.get("suite") == TEMPORAL_SUITE else gate_cells()
+
+
+def _power_problems(where: str, record: Mapping[str, Any] | None) -> list[str]:
+    record = record or {}
+    found = []
+    if record.get("source") != AC_POWER:
+        found.append(f"environment: {where} not on AC power (source {record.get('source')!r})")
+    if record.get("low_power_mode") is not False:
+        found.append(f"environment: {where} Low Power Mode {record.get('low_power_mode')!r}")
+    return found
+
+
+def environment_problems(record: Mapping[str, Any], document: Mapping[str, Any]) -> list[str]:
+    """The temporal gate's power rules (its preregistration, sections 3 and 10)."""
+    found = _power_problems("document start", (document.get("environment") or {}).get("power"))
+    found += _power_problems("document end", (document.get("environment_end") or {}).get("power"))
+    for i, checks in enumerate(record.get("checks") or []):
+        power_record = (checks or {}).get("power") or {}
+        for moment in ("start", "end"):
+            found += _power_problems(f"run {i + 1} {moment}", power_record.get(moment))
+    return found
 
 Condition = tuple[str, tuple[int, int], int, float, str]
 
@@ -87,6 +126,8 @@ def problems(record: Mapping[str, Any], document: Mapping[str, Any], runs: int) 
     if power.ended_outside_full_wake(document.get("power")):
         caps = document["power"]["end"].get("system_capabilities")
         found.append(f"the run ended outside full wake (system capabilities {caps!r})")
+    if document.get("suite") == TEMPORAL_SUITE:
+        found += environment_problems(record, document)
     return found
 
 
@@ -124,6 +165,25 @@ def _same_code_and_runtime(first: Mapping[str, Any], second: Mapping[str, Any]) 
             found.append(f"{doc['target']['name']} was not measured from a clean working tree")
     if first["environment"].get("commit") != second["environment"].get("commit"):
         found.append("commits differ")
+    if TEMPORAL_SUITE in (first.get("suite"), second.get("suite")):
+        if first.get("suite") != second.get("suite"):
+            found.append("suites differ")
+        for doc in (first, second):
+            end = doc.get("environment_end") or {}
+            if end.get("tracked_changes") is not False or end.get("untracked_files") != []:
+                found.append(f"{doc['target']['name']} did not end on a clean working tree")
+            if end.get("commit") != doc["environment"].get("commit"):
+                found.append(f"{doc['target']['name']} ended on a different commit")
+    return found
+
+
+def src_trees(*documents: Mapping[str, Any] | None) -> set[str | None]:
+    """Every ``src/`` tree hash the runs of *documents* recorded."""
+    found: set[str | None] = set()
+    for document in documents:
+        for record in (document or {}).get("cells", []):
+            for runtime in record.get("runtime") or []:
+                found.add((runtime or {}).get("src_tree"))
     return found
 
 
@@ -149,7 +209,7 @@ def level_results(
     first = _records(primary)
     second = _records(second_stage) if second_stage is not None else {}
     results: dict[Condition, dict[str, Any]] = {}
-    for cell in gate_cells():
+    for cell in cells_for(primary):
         record = first.get(cell.condition)
         entry: dict[str, Any] = {"stage1": None, "stage2": None, "result": "missing"}
         if record is None:
@@ -157,7 +217,8 @@ def level_results(
             continue
         found = problems(record, primary, PRIMARY_RUNS)
         if found:
-            entry.update(stage1="invalid", result="invalid", problems=found)
+            entry.update(stage1="invalid", result="invalid", problems=found,
+                         environment_only=all(p.startswith(ENVIRONMENT_PROBLEMS) for p in found))
             results[cell.condition] = entry
             continue
         values = per_run_values(record, statistic)
@@ -174,7 +235,8 @@ def level_results(
             else:
                 found = problems(again, second_stage or {}, STAGE2_RUNS)
                 if found:
-                    entry.update(stage2="invalid", result="invalid", problems=found)
+                    entry.update(stage2="invalid", result="invalid", problems=found,
+                                 environment_only=all(p.startswith(ENVIRONMENT_PROBLEMS) for p in found))
                 else:
                     values = per_run_values(again, statistic)
                     entry.update(stage2=stage2(values), stage2_statistic=statistics.median(values),
@@ -191,7 +253,7 @@ def level_results(
 def borderline_cells(primary: Mapping[str, Any]) -> list[Cell]:
     """The cells a stage-2 run of this level must measure, in gate order."""
     results = level_results(primary)
-    return [cell for cell in gate_cells() if results[cell.condition]["stage1"] == "borderline"]
+    return [cell for cell in cells_for(primary) if results[cell.condition]["stage1"] == "borderline"]
 
 
 def cell_verdict(kernel: str, engine: str) -> str:
@@ -221,10 +283,15 @@ def verdicts(
     mismatch = _same_code_and_runtime(kernel_level, engine_level)
     if mismatch:
         raise ValueError("the two levels are not comparable: " + "; ".join(mismatch))
+    trees = None
+    if kernel_level.get("suite") == TEMPORAL_SUITE:
+        trees = src_trees(kernel_level, engine_level, kernel_stage2, engine_stage2)
+        if len(trees) != 1 or None in trees:
+            raise ValueError(f"the runs recorded src/ tree hashes {sorted(map(str, trees))}; they must agree")
     kernel = level_results(kernel_level, kernel_stage2)
     engine = level_results(engine_level, engine_stage2)
     cells = []
-    for cell in gate_cells():
+    for cell in cells_for(kernel_level):
         k, e = kernel[cell.condition], engine[cell.condition]
         cells.append({**cell.to_record(), "label": cell.label, "kernel_level": k, "engine_level": e,
                       "verdict": cell_verdict(k["result"], e["result"])})
@@ -239,8 +306,10 @@ def verdicts(
     else:
         gate = "INCONCLUSIVE"
     return {
+        "suite": kernel_level.get("suite"),
         "runtime": runtime_of(kernel_level),
         "commit": kernel_level["environment"].get("commit"),
+        "src_tree": next(iter(trees)) if trees else None,
         "reference_machine": reference,
         "rules": {
             "requirement": REQUIREMENT,

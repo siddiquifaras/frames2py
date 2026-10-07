@@ -15,7 +15,9 @@ import frames2py
 # regression, not a lucky draw. No example database is written into the checkout.
 # `pytest --hypothesis-profile explore` searches many more random examples.
 settings.register_profile("default", derandomize=True, database=None, deadline=None, print_blob=True)
-settings.register_profile("explore", max_examples=3000, database=None, deadline=None, print_blob=True)
+settings.register_profile(
+    "explore", max_examples=3000, derandomize=False, database=None, deadline=None, print_blob=True
+)
 settings.load_profile("default")
 
 

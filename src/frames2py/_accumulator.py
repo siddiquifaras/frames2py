@@ -39,7 +39,9 @@ class Accumulator:
     representation.
 
     Args:
-        sensor_size: ``(width, height)``. Frames are ``(height, width[, channels])``.
+        sensor_size: ``(width, height)``. Frames are ``(height, width[, channels])``, or
+            time-first for the temporal kernels: ``(bins, height, width)`` for ``VoxelGrid``,
+            ``(2, bins, height, width)`` for ``StackedHistogram``.
         kernel: A kernel instance, or ``"event_count"``, ``"polarity"`` or
             ``"time_surface"``.
     """
@@ -75,13 +77,15 @@ class Accumulator:
     def _accumulate(self, events: object) -> int:
         """``accumulate``, returning the number of in-bounds events."""
         checked = validate(events)
-        if len(checked) and int(checked["t"].max()) >= TIMESTAMP_LIMIT:
+        latest = int(checked["t"].max()) if len(checked) else 0
+        if latest >= TIMESTAMP_LIMIT:
             raise ValueError("an event has t >= 2**63; the whole call is rejected")
         inside = self._in_bounds(checked)
         self._kernel.begin_call(self._state)
         self._events_out_of_bounds += len(checked) - len(inside)
         if len(inside):
-            latest = int(inside["t"].max())
+            if inside is not checked:  # some events were out of bounds: the maximum may be lower
+                latest = int(inside["t"].max())
             if self._watermark is None or latest > self._watermark:
                 self._watermark = latest
             self._kernel.accumulate(inside, self._state, self._watermark)
@@ -109,8 +113,9 @@ class Accumulator:
         self._watermark = None
         self._events_out_of_bounds = 0
 
-    def _read_into(self, out: NDArray[Any]) -> None:
-        self._kernel.read(self._state, out, self._watermark)
+    def _read_into(self, out: NDArray[Any], at: int | None = None) -> None:
+        """Read the representation into *out*, at the watermark or the later time *at*."""
+        self._kernel.read(self._state, out, self._watermark if at is None else at)
 
     def _close_window(self) -> None:
         self._kernel.close_window(self._state)

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import collections
+import math
+import numbers
+import operator
 import sys
 import threading
 import time
-from typing import Final
+from typing import Any, Final
 
 from frames2py._accumulator import Accumulator
 from frames2py._events import EventArray
@@ -15,6 +19,42 @@ from frames2py.publish import ImmutablePublisher, SnapshotPublisher
 
 _VERIFIED_FREE_THREADED: Final = frozenset({(3, 14)})
 """Minor versions whose free-threaded build the publisher's handoff has been verified on."""
+
+_allocate_lock = threading.Lock
+
+
+def _sequence_floor(sequence: Any) -> int:
+    """The sequence a snapshot must exceed to be newer: *sequence*, or -1 for ``None``."""
+    if sequence is None:
+        return -1
+    if isinstance(sequence, bool):
+        raise TypeError("sequence must be an int or None, got a bool")
+    try:
+        floor = operator.index(sequence)
+    except TypeError:
+        raise TypeError(f"sequence must be an int or None, got {type(sequence).__name__}") from None
+    if floor < 0:
+        raise ValueError(f"sequence must be >= 0, got {floor}")
+    return floor
+
+
+def _deadline(timeout: object) -> float | None:
+    """The monotonic deadline for *timeout* seconds, or ``None`` for no limit."""
+    if timeout is None:
+        return None
+    if isinstance(timeout, bool):
+        raise TypeError("timeout must be a real number or None, got a bool")
+    if not isinstance(timeout, numbers.Real):
+        raise TypeError(f"timeout must be a real number or None, got {type(timeout).__name__}")
+    if timeout != timeout:
+        raise ValueError("timeout must not be NaN")
+    if timeout < 0:
+        raise ValueError(f"timeout must be >= 0, got {timeout}")
+    try:
+        seconds = float(timeout)
+    except OverflowError:  # an int beyond float range: no deadline that could ever pass
+        return None
+    return None if seconds == math.inf else time.monotonic() + seconds
 
 
 def _check_runtime() -> None:
@@ -31,9 +71,9 @@ class Engine:
     """Accumulates events from one producer and publishes snapshots for consumers.
 
     ``ingest()`` does its work on the caller's thread and never waits for a consumer.
-    Consumers call ``snapshot()`` whenever they like; ``snapshot()`` and ``stats`` take no
-    lock. Publication happens only inside ``ingest()`` and ``stop()``: there is no timer
-    thread.
+    Consumers call ``snapshot()`` whenever they like, or ``wait_for_newer()`` to block until
+    a newer snapshot is published; ``snapshot()`` and ``stats`` take no lock. Publication
+    happens only inside ``ingest()`` and ``stop()``: there is no timer thread.
 
     The first ``ingest()`` that doesn't raise makes its thread the producer for the
     Engine's lifetime, ``reset()`` included; ``ingest()`` from any other thread raises
@@ -44,7 +84,9 @@ class Engine:
     unless that minor version has been verified (3.14).
 
     Args:
-        sensor_size: ``(width, height)``. Frames are ``(height, width[, channels])``.
+        sensor_size: ``(width, height)``. Frames are ``(height, width[, channels])``, or
+            time-first for the temporal kernels: ``(bins, height, width)`` for ``VoxelGrid``,
+            ``(2, bins, height, width)`` for ``StackedHistogram``.
         kernel: A kernel instance, or ``"event_count"``, ``"polarity"`` or
             ``"time_surface"``.
         snapshot_interval_ms: ``0`` publishes on every ``ingest()``. A positive
@@ -66,13 +108,14 @@ class Engine:
         self._interval_ns = snapshot_interval_ms * 1e6
         self._created_ns = time.monotonic_ns()
         self._lifecycle = threading.Lock()
-        self._producer: int | None = None
+        self._producer: threading.Thread | None = None
         self._running = True
         self._sequence = 0
         self._events_ingested = 0
         self._snapshots_published = 0
         self._pending = False
         self._last_published_ns: int | None = None
+        self._waiters: collections.deque[Any] = collections.deque()
 
     def ingest(self, events: EventArray) -> None:
         """Accumulate one call's events, then publish if the interval allows.
@@ -82,9 +125,9 @@ class Engine:
         ``ValueError`` if any event has ``t >= 2**63``, in both cases before any state or
         statistic changes.
         """
-        caller = threading.get_ident()
+        caller = threading.current_thread()
         with self._lifecycle:
-            if self._producer is not None and caller != self._producer:
+            if self._producer is not None and caller is not self._producer:
                 raise RuntimeError("ingest() called from a thread other than the producer's")
             if not self._running:
                 self._producer = caller
@@ -102,6 +145,76 @@ class Engine:
         """The latest published snapshot, shared, not copied; or ``None`` before the first
         publication and after ``reset()`` until the next. Takes no lock."""
         return self._publisher.read()
+
+    def wait_for_newer(self, sequence: int | None, *, timeout: float | None = None) -> Snapshot | None:
+        """Block until a snapshot newer than *sequence* is published, then return the latest.
+
+        A snapshot is newer when its ``meta.sequence`` is greater than *sequence*; with
+        ``None``, any published snapshot is. If one is already published the call returns it
+        at once. Otherwise it returns the snapshot published at the moment it reads it after a
+        publication, which needn't be ``sequence + 1``: publications in between may be skipped.
+        Passing back the returned ``meta.sequence`` gives strictly increasing snapshots.
+
+        *timeout* is in seconds on the monotonic clock. ``None`` or ``math.inf`` waits without
+        limit; ``0`` checks once without blocking; values above ``threading.TIMEOUT_MAX`` are
+        honoured. On timeout the call returns ``None``, and only if no newer snapshot is
+        published when it checks after the timeout has elapsed.
+
+        ``stop()`` and ``reset()`` wake nobody: the publication ``stop()`` makes for a pending
+        window wakes waiters like any other, and after ``reset()`` a waiter returns the first
+        publication after it, whose sequence is larger than any before the reset. A reset that
+        lands between a publication and the waiter's read leaves the waiter waiting for the
+        next one. A SIGINT raises ``KeyboardInterrupt`` out of a main-thread wait and leaves the
+        Engine unchanged, as CPython's ``Lock.acquire()`` allows: a SIGINT arriving as the wait
+        starts blocking is acted on at its next wake, which is a publication, the timeout, or
+        another SIGINT.
+
+        If a SIGINT interrupts the producer's thread during a publication, one waiter may stay
+        blocked until its timeout, or indefinitely without one: the interrupted publication may
+        have taken that waiter off the registry without waking it. Later publications wake every
+        other waiter as usual. Pass a timeout if the producer can be interrupted.
+
+        The call never takes the lock that ``ingest()`` holds. Each publication releases the
+        waiters registered before it, one lock release each, on the publishing thread; it
+        never waits for a waiter.
+
+        Raises:
+            TypeError: *sequence* is not an integer (an ``int`` or another type with
+                ``__index__``, such as a NumPy integer) or ``None``, or *timeout* is not a real
+                number or ``None``. A bool is refused for either.
+            ValueError: *sequence* is negative, or *timeout* is negative or NaN.
+            RuntimeError: called on the producer's thread, which can't publish while it waits.
+        """
+        floor = _sequence_floor(sequence)
+        deadline = _deadline(timeout)
+        if threading.current_thread() is self._producer:
+            raise RuntimeError("wait_for_newer() called on the producer's thread")
+        while True:
+            expired = deadline is not None and time.monotonic() >= deadline
+            snapshot = self._publisher.read()
+            if snapshot is not None and snapshot.meta.sequence > floor:
+                return snapshot
+            if expired:
+                return None
+            waiter = _allocate_lock()
+            waiter.acquire()
+            self._waiters.append(waiter)
+            try:
+                # Registered before this read: a publication this read misses releases the lock.
+                snapshot = self._publisher.read()
+                if snapshot is not None and snapshot.meta.sequence > floor:
+                    return snapshot
+                if deadline is None:
+                    waiter.acquire()
+                else:
+                    remaining = deadline - time.monotonic()
+                    if remaining > 0:
+                        waiter.acquire(timeout=min(remaining, threading.TIMEOUT_MAX))
+            finally:
+                try:
+                    self._waiters.remove(waiter)
+                except ValueError:  # a publication already took it
+                    pass
 
     @property
     def stats(self) -> EngineStats:
@@ -145,6 +258,16 @@ class Engine:
         buffer = self._publisher.begin_write()
         self._accumulator._read_into(buffer)
         self._publisher.end_write(SnapshotMeta(watermark=self._accumulator.watermark, sequence=self._sequence))
+        # Release the waiters registered before this point, and no later ones. The registry
+        # operation (in the deque's critical section on free-threaded builds, under the GIL
+        # otherwise) orders this against registration on every publication, with or without
+        # waiters; an unlocked emptiness check could miss a waiter on free-threaded builds.
+        marker = object()
+        waiters = self._waiters
+        waiters.append(marker)
+        while (waiter := waiters.popleft()) is not marker:
+            if type(waiter) is not object:  # a marker a publication interrupted mid-drain left behind
+                waiter.release()
         self._accumulator._close_window()
         self._snapshots_published += 1
         self._pending = False

@@ -11,7 +11,7 @@ An Engine is running from construction. `stop()` stops it, `start()` resumes it,
 | `stop()` | if in-bounds events were accumulated since the last publication, publish them; then stop. With nothing pending it publishes nothing, so a windowed kernel's last frame is not replaced by an empty one. The latest snapshot stays readable. |
 | `start()` | resume ingestion. |
 | `reset()` | clear the kernel state, `events_ingested`, `events_out_of_bounds`, `snapshots_published`, the watermark and the published snapshot. The next `ingest()` publishes, like the first. |
-| `snapshot()`, `stats` | read-only; never change anything. |
+| `snapshot()`, `stats`, `wait_for_newer()` | read-only; never change anything. |
 
 **What `reset()` leaves alone:** `SnapshotMeta.sequence` keeps counting (the Engine's
 lifetime, not the session's), `stats.uptime_ns` keeps measuring from construction, the
@@ -30,8 +30,20 @@ one rejected with `TypeError` or `ValueError` doesn't. `ingest()` from any other
 raises `RuntimeError` and changes nothing. An Engine is not multi-producer; a different
 producer thread needs a new Engine.
 
+The producer is its `threading` thread object, not its thread ident: a thread started after
+the producer exits is another thread, even when CPython gives it the producer's ident. One
+case remains on CPython 3.11 and 3.12. A thread created outside `threading`, by C code such
+as a vendor SDK's callback thread, is represented by a dummy thread object that those
+versions keep after the thread ends. If such a thread is the producer and exits, and a later
+thread created outside `threading` gets its ident, the later thread is given the same object
+and treated as the producer: its `ingest()` is accepted and its `wait_for_newer()` refused.
+CPython 3.13 and later discard the dummy object when its thread ends.
+
 **Any number of consumers.** `snapshot()` and `stats` may be called from any thread, at any
-time, and take no lock.
+time, and take no lock. `wait_for_newer()` may be called from any thread but the producer's
+(it raises `RuntimeError` there); it never takes the lifecycle lock, and `stop()` and
+`reset()` wake no waiter
+([details](snapshots.md#waiting-for-a-newer-snapshot)).
 
 **Lifecycle calls from anywhere.** `start()`, `stop()` and `reset()` may be called from any
 thread. They and `ingest()` take one private lock, so each runs whole and never interleaves
@@ -54,7 +66,12 @@ consumers, no buffer a consumer must hand back. That is a statement about Frames
 code. It runs inside CPython, and these can still delay the producer thread:
 
 - the GIL, on standard builds, when a consumer thread is running Python code;
-- CPython's own per-object locks, such as the list lock taken when the snapshot is stored;
+- CPython's own per-object locks, such as the list lock taken when the snapshot is stored,
+  and the waiter registry's lock, which `wait_for_newer()` callers take only briefly inside
+  CPython, never while running Python code;
+- the work of releasing waiters: each publication releases every thread registered in
+  `wait_for_newer()`, one lock release each, so it costs more with more waiters
+  ([measured](snapshots.md#what-waiting-costs));
 - garbage collection, the memory allocator, and the operating system's scheduling;
 - CPU and memory contention from whatever else the machine runs, consumers included.
 
@@ -84,9 +101,17 @@ progress.
   later until each is verified: the snapshot hand-off relies on CPython source behaviour
   (see [Architecture](architecture.md#how-the-hand-off-works)) that is checked per minor
   version.
+- **Recommended patch level: 3.14.5 or later.** CPython 3.14.0 to 3.14.4 have a race in an
+  internal lock ([gh-148820](https://github.com/python/cpython/issues/148820)) that can end
+  the process with a fatal error when a signal or a spurious wakeup lands while threads
+  contend for that lock. `wait_for_newer()`'s blocking path uses the locking code that fix
+  changed: a waiter blocked in `Lock.acquire()` and the publication that releases it both
+  take CPython's internal parking-lot mutex. The Engine doesn't check the patch level. The
+  race was not reproduced in Frames2Py's tests.
 - **GIL enabled:** a free-threaded build running with the GIL enabled (for example
   `PYTHON_GIL=1`) behaves as a standard build and is treated as one.
-- **Throughput** on 3.14t has been measured on one machine (Apple M4); see
+- **Throughput** on 3.14t has been measured on one machine (Apple M4), with CPython 3.14.2t
+  and NumPy 2.4.6; 3.14.5 or later has not been measured. See
   [Performance](../reference/performance.md).
 
 The package metadata carries no free-threading classifier, because the classifiers can't

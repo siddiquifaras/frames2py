@@ -11,7 +11,7 @@ Fails unless:
   in either;
 - no documentation-site source, tooling, build output or logo asset is in either;
 - the metadata carries the project's version, licence, Python floor, dependencies and extras,
-  and no package of the ``docs`` dependency group, in the dependencies or in any extra.
+  and no package of the ``docs`` or ``notebook`` dependency group, in the dependencies or in any extra.
 """
 
 from __future__ import annotations
@@ -64,7 +64,8 @@ def check_common(errors: list[str], kind: str, names: list[str]) -> None:
             fail(errors, f"{kind}: bytecode {name}")
         if any(part in name for part in RETIRED):
             fail(errors, f"{kind}: retired prototype path {name}")
-        for dev in (".github/", "tests/", "benchmarks/", ".venv", ".gitignore", ".DS_Store", "dist/", "uv.lock"):
+        for dev in (".github/", "tests/", "benchmarks/", "verification/", ".venv", ".gitignore", ".DS_Store", "dist/",
+                    "uv.lock"):
             if dev in name:
                 fail(errors, f"{kind}: development material {name}")
         parts = PurePosixPath(name).parts
@@ -79,8 +80,9 @@ def requirement_name(requirement: str) -> str:
 
 
 def docs_packages() -> set[str]:
+    """The packages of the documentation and notebook tooling, which the artifacts must never require."""
     groups = tomllib.loads((ROOT / "pyproject.toml").read_text()).get("dependency-groups", {})
-    return {requirement_name(r) for r in groups.get("docs", []) if isinstance(r, str)}
+    return {requirement_name(r) for group in ("docs", "notebook") for r in groups.get(group, []) if isinstance(r, str)}
 
 
 def check_metadata(errors: list[str], kind: str, text: str, version: str, requires_python: str,
@@ -88,7 +90,7 @@ def check_metadata(errors: list[str], kind: str, text: str, version: str, requir
     meta = Parser().parsestr(text)
     if meta["Version"] != version:
         fail(errors, f"{kind}: Version {meta['Version']}, expected {version}")
-    if meta["License-Expression"] != "MIT" or meta.get_all("License-File") != ["LICENSE"]:
+    if meta["License-Expression"] != "Apache-2.0" or meta.get_all("License-File") != ["LICENSE"]:
         fail(errors, f"{kind}: licence metadata {meta['License-Expression']!r} {meta.get_all('License-File')!r}")
     if any(c.startswith("License ::") for c in meta.get_all("Classifier") or []):
         fail(errors, f"{kind}: legacy licence classifier present")
@@ -99,7 +101,7 @@ def check_metadata(errors: list[str], kind: str, text: str, version: str, requir
         fail(errors, f"{kind}: extras {sorted(extras)}, expected {sorted(EXTRAS)}")
     for requirement in meta.get_all("Requires-Dist") or []:
         if requirement_name(requirement) in docs:
-            fail(errors, f"{kind}: documentation tooling in Requires-Dist: {requirement}")
+            fail(errors, f"{kind}: documentation or notebook tooling in Requires-Dist: {requirement}")
     unconditional = [r for r in meta.get_all("Requires-Dist") or [] if "extra ==" not in r]
     if unconditional != ["numpy>=2.4"]:
         fail(errors, f"{kind}: unconditional dependencies {unconditional}, expected ['numpy>=2.4']")

@@ -9,6 +9,135 @@ else on the line (for example "## 1.0.0"). Write links as absolute URLs, because
 is also the GitHub Release text. The tests fail when pyproject.toml's version has no section.
 -->
 
+## 1.1.0
+
+Released 2026-10-07.
+
+A release that adds to 1.0 without changing what 1.0 code does, apart from one fix (below):
+waiting for a newer snapshot, two temporal representations for event-vision models, frames
+at fixed steps of event time, and a tested recipe for handing snapshots to PyTorch.
+
+```sh
+pip install --upgrade frames2py
+```
+
+### Licence
+
+- **Frames2Py is licensed under the Apache License, Version 2.0, from this release on.**
+  1.0.0rc1 and 1.0.0 were published under the MIT License and stay under it: their files on
+  PyPI keep their MIT licence file and metadata. The licence text is in
+  [LICENSE](https://github.com/siddiquifaras/frames2py/blob/main/LICENSE).
+- The package metadata and the copyright line name the author as Muhammad Faras Siddiqui.
+
+### New
+
+- **`Engine.wait_for_newer(sequence, *, timeout=None)`** blocks until a snapshot newer than
+  `sequence` is published and returns the latest one, or `None` on timeout. It returns the
+  latest state, not every publication; `stop()` and `reset()` wake nobody; calling it on the
+  producer's thread raises `RuntimeError`. Each publication releases the waiters registered
+  before it and never waits for one. With no waiter, a preregistered measurement on one
+  machine found no distinguishable cost to `ingest()`; waiters do add work to each
+  publication. Details and figures:
+  [Waiting for a newer snapshot](https://siddiquifaras.github.io/frames2py/core/snapshots/#waiting-for-a-newer-snapshot).
+- **Two temporal kernels**, exported from `frames2py` and `frames2py.kernels`:
+  - `StackedHistogram(bins=..., bin_us=...)`: `(2, bins, H, W)` uint32, events per polarity
+    and time bin, as RVT consumes before its clip;
+  - `VoxelGrid(bins=..., bin_us=...)`: `(bins, H, W)` float32, signed events split linearly
+    between time knots, as in E2VID and E-RAFT.
+
+  Both use bins on an absolute event-time grid and show only completed bins; they count
+  exactly in integers, give the same frame bit for bit whatever the order and batching of
+  the events, and apply no normalisation. They did not reach 20M events/s through the Engine
+  in every cell of their performance gate. Details:
+  [Temporal kernels](https://siddiquifaras.github.io/frames2py/core/kernels/#temporal-kernels), the
+  [semantics table](https://siddiquifaras.github.io/frames2py/core/temporal-semantics/) and
+  [Throughput](https://siddiquifaras.github.io/frames2py/core/kernels/#throughput).
+- **`frames2py.replay.windows(batches, sensor_size, kernel, *, every_us)`** yields a frame
+  every `every_us` µs of event time from a recording's batches, deterministically and
+  independently of how the events are batched. It refuses `ExpDecay`, whose result depends
+  on call boundaries. Details: [Frames in event time](https://siddiquifaras.github.io/frames2py/data/replay/#frames-in-event-time).
+- **A PyTorch recipe**: copy a snapshot, then `torch.from_numpy`, with explicit dtype and
+  device handling, for every kernel. It is documentation tested in its own CI workflow;
+  Frames2Py has no PyTorch dependency, extra or code. Details:
+  [Handing snapshots to PyTorch](https://siddiquifaras.github.io/frames2py/consumers/pytorch/).
+
+### Changed
+
+- **Custom kernels: `read()` may be given a later time.** `Kernel.read(state, out,
+  watermark)` may now receive a time later than the accumulated watermark, and must evaluate
+  the representation at it without changing the state. Only `replay.windows()` does this;
+  `Accumulator` and `Engine` still pass the accumulated watermark, so a custom kernel used
+  through them behaves as in 1.0. The seven built-in kernels follow the rule. Details:
+  [Custom kernels](https://siddiquifaras.github.io/frames2py/core/kernels/#custom-kernels).
+
+### Fixes
+
+- **The producer check follows the thread, not its thread ident.** CPython can give a new
+  thread the ident of one that has exited. Since 1.0, `ingest()` from a thread started after
+  the producer exited was accepted when that thread got the producer's ident; it now raises
+  `RuntimeError`, as documented, and such a thread may call `wait_for_newer()`. One case
+  remains on CPython 3.11 and 3.12, for threads created outside `threading`:
+  [Known limitations](https://siddiquifaras.github.io/frames2py/reference/support/#known-limitations).
+
+### Documentation
+
+- The consumer pattern now waits with `wait_for_newer()`, with polling as the alternative
+  for consumers on their own clock.
+- `SnapshotMeta.sequence` is described as strictly increasing, as the contract promises,
+  not as increasing by one per publication: a consumer can tell that it skipped
+  publications, not how many.
+- New: the temporal kernel semantics table, the measured cost of waiting, the results of the
+  v1 observation study (with its scope: one machine, one workload, threads in one process),
+  and a [Known limitations](https://siddiquifaras.github.io/frames2py/reference/support/#known-limitations) section.
+- New data files in `benchmarks/results/`: the temporal-kernel gate's two runs, the
+  `wait_for_newer` measurement and the observation study's per-configuration table.
+- Diagrams: Frames2Py's arrangement next to two coupled pipelines on the
+  [overview](https://siddiquifaras.github.io/frames2py/), waiting against polling under
+  [Waiting for a newer snapshot](https://siddiquifaras.github.io/frames2py/core/snapshots/#waiting-for-a-newer-snapshot),
+  and the temporal kernels' bins and closing time in the
+  [semantics table](https://siddiquifaras.github.io/frames2py/core/temporal-semantics/#the-closing-time).
+- An end-to-end notebook,
+  [`examples/live_observation.ipynb`](https://github.com/siddiquifaras/frames2py/blob/main/examples/live_observation.ipynb):
+  a live Engine on a synthetic stream, independent consumers waiting with
+  `wait_for_newer()`, one of them deliberately slow, a `reset()`, and a modest analysis.
+  It runs from a checkout with the new `notebook` dependency group, which is not a
+  dependency or an extra of the package.
+- [CONTRIBUTING.md](https://github.com/siddiquifaras/frames2py/blob/main/CONTRIBUTING.md)
+  and [SECURITY.md](https://github.com/siddiquifaras/frames2py/blob/main/SECURITY.md), also
+  shown under Development in the documentation.
+- The README shows badges for CI on `main`, the licence, the supported Python versions and
+  platforms, and the version on PyPI.
+
+### Maintenance
+
+- CI also runs once a month on `main`, including a job that installs the newest NumPy,
+  extras and CPython builds instead of the lockfile's.
+- A separate `notebook.yml` workflow runs the end-to-end notebook against the built wheel.
+- The build backend is pinned to exactly `uv_build==0.12.20` (1.0 allowed
+  `>=0.12.20,<0.13`), so building from the sdist uses the backend the release was built and
+  checked with.
+
+### Upgrading from 1.0
+
+Nothing needs to change. The event contract, the five 1.0 kernels and their outputs,
+`Accumulator`, `Engine` (`ingest()`, `snapshot()`, `stats`, the cadence and the
+lifecycle), `Snapshot` and the publisher, the adapters, the recorder, `paced()` and the
+viewer behave as in 1.0, apart from the producer-check fix above. The supported Python
+versions and platforms and the NumPy floor are unchanged;
+[Supported Python and platforms](https://siddiquifaras.github.io/frames2py/reference/support/).
+
+- The licence changes from MIT to Apache 2.0 (above).
+- On free-threaded CPython 3.14t, 3.14.5 or later is now recommended: 3.14.0 to 3.14.4 have
+  a CPython race that can end the process
+  ([Free-threaded CPython](https://siddiquifaras.github.io/frames2py/reference/support/#free-threaded-cpython)).
+- A custom kernel you want to use with `replay.windows()` must handle a `read()` time later
+  than its own watermark (above).
+- Two internal changes speed up 1.0 paths without changing their results: the Accumulator
+  reuses the timestamp maximum of the range check, and `TimestampDecay` computes its
+  exponentials in place. The v1 performance figures were measured before 1.0.0, on commit
+  `6a0fa27`, and were not re-measured on 1.1.
+- Cross-process snapshots are not part of 1.1.
+
 ## 1.0.0
 
 The first stable release. The code is that of 1.0.0rc1, which was installed from PyPI and

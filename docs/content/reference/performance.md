@@ -6,10 +6,12 @@ hardware has been measured, and CI measures no throughput. Treat the numbers as 
 machine did under these conditions, not as a rate for yours. How the gate was measured is on
 [Benchmark methodology](methodology.md); every gate cell is in
 [`benchmarks/results/gate_v1.csv`](https://github.com/siddiquifaras/frames2py/blob/main/benchmarks/results/gate_v1.csv).
+The temporal kernels added in 1.1 had a gate of their own, which they did not meet in every
+cell: see [Throughput](../core/kernels.md#throughput) on the kernels page.
 
 ## The v1 performance gate
 
-The gate asks whether the five kernels and `Engine.ingest()` sustain at least **20 million
+The gate asks whether the five 1.0 kernels and `Engine.ingest()` sustain at least **20 million
 events per second** across a fixed matrix of conditions:
 
 | dimension | values |
@@ -28,10 +30,13 @@ events per second** across a fixed matrix of conditions:
   Engine's clock driven as if events arrived at exactly 20M events/s, so publications happen
   on the real schedule; statistic: events / total time inside the timed calls.
 
-Measured on commit `6a0fa27` with two runtimes, each gated on its own:
+Measured on commit `6a0fa27`, before 1.0.0, with two runtimes, each gated on its own:
 
 - **CPython 3.11.14**, NumPy 2.4.6;
 - **CPython 3.14.2t**, free-threaded, GIL disabled (checked in every run), NumPy 2.4.6.
+
+The ingest path has changed since and was not re-measured; the changes are listed under
+[Code measured](methodology.md).
 
 **Result: all 150 cells passed at both levels on both runtimes.** Every cell was a clear pass
 (at or above 22M events/s on the median of 5 runs), so no cell needed the borderline stage.
@@ -61,11 +66,11 @@ none below 22M events/s. The other cells were not re-measured on 2.5.3.
 Per-call latency is recorded for every cell and level (p50, p95, p99 and maximum over the
 pooled calls of the 5 runs, in the CSV). For example, `event_count` at 1280x720, 10k events
 per call, 16 ms, uniform, Engine level: p50 / p95 / p99 of 40 / 63 / 238 µs on 3.11.14 and
-41 / 55 / 228 µs on 3.14.2t, over 1,600 calls. The 1M @ 0 ms cells have 35 calls, so their
-p99 is their maximum. The largest single calls were isolated outliers: one 53 ms call at
+41 / 55 / 228 µs on 3.14.2t, over 1,600 calls. The 1M-event cells have 35 or 50 calls, so
+their p99 is their maximum. The largest single calls were isolated outliers: one 53 ms call at
 3.11.14 Engine level (the next largest was 10.5 ms) and one 108 ms call at 3.14.2t kernel
 level (the next largest was 9.3 ms). Their cause is not established; read single-call
-maxima, and the p99 of the 35-call cells, as single calls.
+maxima, and the p99 of the 1M-event cells, as single calls.
 
 Memory, measured with `tracemalloc` in a separate untimed pass: the peak temporary
 allocation of one call was at most 23 MiB (`timestamp_decay` with 1M events); at 1280x720,
@@ -74,7 +79,7 @@ one published frame.
 
 ## Live: fed at 20M events/s
 
-The same machine and runtimes, 1280x720 uniform events, all five kernels at the five gate
+The same machine and runtimes, 1280x720 uniform events, all five 1.0 kernels at the five gate
 conditions, on the real clock: the producer released each batch at the moment a 20M events/s
 stream would deliver it, for 10 s.
 
@@ -97,8 +102,10 @@ were for that check only; they are not a latency guarantee.
 
 ### With a consumer
 
-The same live setup with one reader thread that read every new snapshot at the publication
-cadence and touched every pixel (`frame.max()`), 3 runs per runtime:
+The same machine, runtimes, kernels, conditions and pacing as above, but in 2 s windows: 2 s
+without a reader, then 2 s with one reader thread in the same process, which read every new
+snapshot at the publication cadence and touched every pixel (`frame.max()`); 3 runs per
+runtime:
 
 - the producer achieved 19.8M to 20.3M events/s in every condition, with and without the
   reader;
@@ -108,6 +115,67 @@ cadence and touched every pixel (`frame.max()`), 3 runs per runtime:
 
 The reader-free measurement always ran first in each process, so run order and the reader's
 effect can't be fully separated. The [viewer's](#viewer) effect on a live producer is below.
+
+## Consumers under load: the v1 observation study
+
+A preregistered study of Frames2Py 1.0.0 asked how a producer and its consumers fare when
+the consumers are slow, compared with other ways of building the same thing in one
+process: consumers called inline by the producer; a queue of finished frames per consumer
+(blocking, dropping the oldest, or unbounded); a shared frame copied under a lock; a
+reference swapped under a lock; raw batches fanned out to consumers that accumulate their
+own state. Its method is on
+[Benchmark methodology](methodology.md#the-v1-observation-study).
+
+**Its results hold for its conditions only:** one machine (the M4 above); synthetic uniform
+events at 1280x720 in 100k-event batches, offered at 20M events/s on the real clock;
+`event_count` with a 16 ms interval; producer and consumers as threads of one process;
+CPython 3.11.14 and CPython 3.14.2t with the GIL disabled, NumPy 2.4.6; 1 or 4 consumers,
+each rendering every state it got (`viewer.render()`), sleeping 30 ms with the state held,
+or doing 250 ms of pure-Python work; 5 runs per configuration. Frames2Py's consumers polled
+`snapshot()` every 16 ms: 1.0.0 had no `wait_for_newer()`. Nothing here says how other
+hardware, kernels, resolutions, rates, recordings or consumers would behave, or how
+consumers in another process would: Frames2Py 1.1 has no cross-process snapshots, and the
+study measured none.
+
+- **Frames2Py kept the producer at 20M events/s** with rendering and sleeping consumers, 1
+  or 4 of them, on both runtimes, and with the 250 ms pure-Python consumers on 3.14.2t. Its
+  consumers' freshness p95 was 16.3-20.2 ms in those cells, and memory grew by at most 0.23
+  MiB/s, inside the study's 0.5 MiB/s bound for bounded memory. A slow
+  consumer observed less often (about 4 times a second with 250 ms of work), not older
+  state.
+- **The two lock-based latest-state designs** behaved the same way, with freshness p95 of
+  18.0-20.7 ms where the producer kept up.
+- **Queues traded the producer or freshness for completeness.** With consumers slower than
+  the 16 ms cadence, blocking queues held the producer to the consumers' pace (freshness
+  p95 175 ms to 5.1 s); with unbounded queues, where the producer kept up, the state
+  consumers saw grew seconds old (p95 6 to 14 s) and memory grew to as much as 2,570 MiB;
+  dropping the oldest item kept freshness p95 at about 80 ms where the producer kept up.
+- **Inline consumers** saw state under 1 ms old when one rendering consumer fitted inside
+  the cadence, and stopped the producer from keeping up in every other configuration.
+- **Pure-Python consumers on CPython 3.11.14** stopped every design from keeping up,
+  Frames2Py included: the latest-state designs ingested 1.5-5.7% of the offered events with
+  250 ms consumers holding the GIL. On 3.14.2t with the GIL disabled, Frames2Py kept up with
+  the same consumers.
+- **Frames2Py against a reference swapped under a lock:** not distinguishable at the
+  study's resolution in any of the 14 comparisons (producer busy time per event, step time
+  p99 and freshness p50; ratios 0.86-1.13). The test is conservative, so this means any
+  difference was smaller than the study could detect, not that there is none. What the
+  Engine adds over that hand-written design is its contract (read-only published frames,
+  the producer thread enforced, lifecycle and `reset()` semantics, statistics, the
+  free-threaded runtime check). Under these conditions it was not measurably faster.
+- **Polling delays observation.** With one rendering consumer, the queue designs' consumers
+  received a state a median 0.005 ms after the producer's step that made it, and the
+  polling designs' 6.0-8.1 ms later. [`wait_for_newer()`](../core/snapshots.md#what-waiting-costs),
+  added in 1.1 after the study, was measured against polling under the study's conditions.
+- **Not preregistered: clock speed.** The process ran at about 1.8 cycles per CPU
+  nanosecond with no consumer or a sleeping one, and at about 3.9-4.0 with CPU-busy
+  consumers; the producer's step time roughly halved at the same time. Every comparison
+  against a configuration with no consumer mixes consumer interference with that
+  difference.
+
+Of the study's thirteen testable hypotheses, ten were supported, three were inconclusive
+and none was contradicted. Every configuration's metrics are in
+[`benchmarks/results/observation_v1_cells.csv`](https://github.com/siddiquifaras/frames2py/blob/main/benchmarks/results/observation_v1_cells.csv).
 
 ## Workload characterisation
 

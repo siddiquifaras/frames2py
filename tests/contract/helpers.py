@@ -121,16 +121,16 @@ EXACT = ["event_count", "polarity", "time_surface"]
 ORDER_INVARIANT = ["event_count", "polarity", "time_surface", "timestamp_decay"]
 
 
-def assert_matches(frame: NDArray[Any], oracle: ReferenceAccumulator) -> None:
-    """*frame* equals the oracle: exactly for integer kernels, within the stated ULP
-    tolerance of the correctly rounded value for the decay kernels."""
-    expected = oracle.read()
+def assert_matches(frame: NDArray[Any], oracle: ReferenceAccumulator, at: int | None = None) -> None:
+    """*frame* equals the oracle, evaluated at *at* if given: exactly for integer kernels,
+    within the stated ULP tolerance of the correctly rounded value for the decay kernels."""
+    expected = oracle.read(at)
     assert frame.shape == expected.shape
     assert frame.dtype == expected.dtype
     if oracle.kernel in EXACT:
         np.testing.assert_array_equal(frame, expected)
         return
     limit = TIMESTAMP_DECAY_MAX_ULP if oracle.kernel == "timestamp_decay" else EXP_DECAY_MAX_ULP
-    distance = float32_ulp_distance(frame, oracle.read_exact())
+    distance = float32_ulp_distance(frame, oracle.read_exact(at))
     worst = int(distance.max()) if distance.size else 0
     assert worst <= limit, f"{oracle.kernel}: {worst} ULP from the oracle (limit {limit})"

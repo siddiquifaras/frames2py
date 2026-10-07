@@ -42,8 +42,16 @@ class Kernel(Protocol):
     def read(self, state: KernelState, out: NDArray[Any], watermark: int | None) -> None:
         """Write the representation, evaluated at ``watermark``, into ``out``.
 
-        Must not change the state. ``watermark`` is ``None`` before the first
-        in-bounds event; kernels without time dependence ignore it.
+        ``watermark`` is the latest accumulated watermark or a later time; ``None``
+        only before the first in-bounds event. The Accumulator and Engine pass the
+        accumulated watermark. Must not change the state, whatever ``watermark`` is.
+        Kernels without time dependence ignore it.
+
+        Since 1.1, ``read`` may be given a time later than the accumulated watermark.
+        A kernel written for 1.0, which assumed it always received exactly the
+        accumulated watermark, may need adapting. ``frames2py.replay.windows()`` passes
+        each frame's boundary, later than every event accumulated, and requires a kernel
+        that evaluates its representation at the time it is given.
         """
         ...
 

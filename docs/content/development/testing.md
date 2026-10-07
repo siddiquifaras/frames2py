@@ -13,16 +13,23 @@ uv run pytest
 Without the extras, the adapter, recorder and viewer tests that need a backend skip. Set
 `FRAMES2PY_REQUIRE_EXTRAS=1` to turn those skips into failures, as CI does.
 
+PyTorch and the `notebook` dependency group are not extras, and no job in `ci.yml` installs
+them. Without PyTorch the PyTorch recipe's tests skip, and without the group the notebook's
+execution test skips. `FRAMES2PY_REQUIRE_TORCH=1` and `FRAMES2PY_REQUIRE_NOTEBOOK=1` turn
+those skips into failures, as their own workflows, `torch.yml` and `notebook.yml`, do.
+
 ## What the suite covers
 
 | path | what it checks |
 |---|---|
 | `tests/contract/` | the behavioural contract of the core: event validation, bounds and watermark, every kernel against an independent reference, publication cadence, snapshots, lifecycle, stats accounting, threads and bounded interleavings |
-| `tests/oracle.py` | the independent reference model of the five kernels, a plain per-event Python loop, and its own tests (`tests/test_oracle.py`) |
+| `tests/oracle.py` | the independent reference model of the five single-frame kernels, a plain per-event Python loop, and its own tests (`tests/test_oracle.py`) |
+| `tests/temporal_oracle.py`, `tests/temporal_cases.py` | the independent reference model of the two temporal kernels and of `replay.windows()`, a per-event log with exact integer and `Fraction` arithmetic; hand-computed cases; their tests (`tests/test_temporal_oracle.py`) |
 | `tests/adapters/` | the EVT, AEDAT 4.0 and HDF5 adapters, against committed fixtures, crafted byte streams and OpenEB 5.2.0's recorded output (`tests/data/evt_golden/`) |
-| `tests/recorder/`, `tests/viewer/`, `tests/test_replay.py` | the recorder, the renderer and viewer loop, and paced replay |
+| `tests/recorder/`, `tests/viewer/`, `tests/test_replay.py` | the recorder, the renderer and viewer loop, paced replay, and `windows()` over a reader |
 | `tests/test_docs.py` | the documentation: runnable examples and their output, the README quickstart, the API reference against the public API |
 | `tests/test_examples.py` | the programs in `examples/` |
+| `tests/test_notebook.py`, `tests/notebook.py` | the end-to-end notebook: the committed file is one clean run, and, with the `notebook` dependency group installed, it runs against the installed package |
 | `tests/test_benchmarks.py`, `tests/test_consumer_benchmarks.py` | the benchmark harness itself, not performance |
 
 The tests check observable behaviour against references that don't reuse the
@@ -94,6 +101,7 @@ edit.
 uv run pyflakes src tests benchmarks examples docs .github/scripts
 uv run mypy src/frames2py
 uv run mypy benchmarks
+uv run mypy --strict .github/scripts
 ```
 
 There is no formatter; formatting is not checked.

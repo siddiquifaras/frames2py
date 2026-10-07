@@ -28,6 +28,8 @@ The core needs NumPy and nothing else. It is pure Python (a `py3-none-any` wheel
   WebAssembly (Pyodide).
 - **Package index:** releases are published on PyPI as `frames2py`; see
   [Installation](../getting-started/installation.md).
+- **PyTorch** is not a dependency; the PyTorch and Python versions the copy-first recipe is
+  tested with are listed under [Tested versions](../consumers/pytorch.md#tested-versions).
 
 ## Free-threaded CPython
 
@@ -38,6 +40,13 @@ The core needs NumPy and nothing else. It is pure Python (a `py3-none-any` wheel
 | CPython 3.15t and later, GIL disabled | **refused** until each minor version is verified |
 | any free-threaded build with the GIL enabled (`PYTHON_GIL=1`) | behaves as a standard build |
 
+- **Recommended patch level: 3.14.5 or later.** CPython 3.14.0 to 3.14.4 have a race in an
+  internal lock ([gh-148820](https://github.com/python/cpython/issues/148820)) that can end
+  the process with a fatal error when a signal or a spurious wakeup lands while threads
+  contend for that lock. `wait_for_newer()`'s blocking path uses the locking code that fix
+  changed: a waiter blocked in `Lock.acquire()` and the publication that releases it both
+  take CPython's internal parking-lot mutex. The Engine doesn't check the patch level. The
+  race was not reproduced in Frames2Py's tests.
 - **What "supported" means on 3.14t:** the full test suite passes, including the
   concurrency tests of the documented model (one producer thread, any number of consumer
   threads, lifecycle calls from any thread; see
@@ -49,8 +58,8 @@ The core needs NumPy and nothing else. It is pure Python (a `py3-none-any` wheel
   ([Architecture](../core/architecture.md#how-the-hand-off-works)).
 - **No classifier:** the package metadata carries no free-threading Trove classifier,
   because the classifiers can't say "3.14t only".
-- **Throughput** on 3.14t has been measured on one Apple M4; see
-  [Performance](performance.md).
+- **Throughput** on 3.14t has been measured on one Apple M4, with CPython 3.14.2t and NumPy
+  2.4.6; 3.14.5 or later has not been measured. See [Performance](performance.md).
 
 ## CPython 3.15
 
@@ -103,3 +112,52 @@ The minimum versions above were tested too, on CPython 3.11, in the NumPy floor 
   3.11 and 3.14t. On macOS, CI tests the renderer, which needs no window, but opens no
   window. `viewer.run()` must be called on the main thread on every platform; it raises
   `RuntimeError` otherwise.
+
+## Known limitations
+
+What Frames2Py 1.1 doesn't do or doesn't support, in one place. Each item links to the
+details.
+
+- **Windows is not supported** and not tested, and neither is Intel macOS
+  ([Core package](#core-package)).
+- **No live camera adapters.** Frames2Py ships file adapters only; a camera enters through
+  your vendor SDK's buffers converted to `EVENT_DTYPE` and passed to `ingest()`
+  ([Adapters](../data/adapters.md)).
+- **EVT decoding covers CD events only;** triggers and monitoring words are skipped
+  ([EVT 2.0 and 3.0](../data/evt.md#the-header)).
+- **AEDAT4 has platform limits:** `frames2py[aedat4]` has no wheel for macOS before 15, and
+  on Linux it needs the system `libatomic1` library ([above](#platform-limits)).
+- **No cross-process snapshots.** Consumers are threads in the producer's process; another
+  process can't read an Engine's snapshots.
+- **Performance figures come from one machine,** an Apple M4. No x86_64, Linux or edge
+  device throughput has been measured, and CI measures none
+  ([Performance](performance.md)).
+- **The temporal kernels miss 20M events/s in some configurations** through the Engine:
+  12 of their 150 gate cells per runtime in the gate's second run (13 and 15 in its first),
+  all publishing large frames often
+  ([Throughput](../core/kernels.md#throughput)).
+- **Free-threaded CPython is 3.14t only;** 3.14.0 to 3.14.4 have a CPython race that can
+  end the process, so 3.14.5 or later is recommended ([above](#free-threaded-cpython)).
+  CPython 3.15 is not supported yet.
+- **No timer thread.** Publication happens only in `ingest()` and `stop()`: a producer that
+  pauses without `stop()` leaves its pending window unpublished
+  ([Engine](../core/engine.md#publication-cadence)).
+- **A temporal kernel's newest bin stays hidden** until an event crosses the next bin edge;
+  `stop()` doesn't show it ([Kernels](../core/kernels.md#bins-on-the-event-time-grid)).
+- **`time_surface` can't tell an event at `t = 0` from no event**
+  ([Kernels](../core/kernels.md#timesurface)).
+- **The viewer draws single frames only;** temporal frames raise `TypeError`
+  ([Kernels](../core/kernels.md#viewing-and-offline-frames)).
+- **`windows()` can't detect a custom kernel whose result depends on how events are split
+  into calls;** its frames then depend on the split points
+  ([Replay](../data/replay.md#frames-in-event-time)).
+- **On CPython 3.11 and 3.12, a later thread can be taken for an exited producer** that was
+  created outside `threading`: if another thread created outside `threading` gets its
+  thread ident, that thread is treated as the producer
+  ([Lifecycle and threads](../core/lifecycle.md#threads)).
+- **An interrupted producer can strand one waiter.** If Ctrl-C interrupts the producer
+  during a publication, one `wait_for_newer()` call may stay blocked until its timeout
+  ([Snapshots](../core/snapshots.md#waiting-for-a-newer-snapshot)).
+- **NumPy's error modes:** settings that make floating-point underflow raise are not
+  supported while using `TimestampDecay`, and other kernels are not checked under them
+  ([Kernels](../core/kernels.md#timestampdecay)).

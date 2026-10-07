@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  # Monthly, on main (GitHub runs schedules on the default branch only), so that breakage from
+  # new NumPy, Python or runner releases shows up as a failed run between pushes.
+  schedule:
+    - cron: "41 5 3 * *"
 
 permissions:
   contents: read
@@ -118,7 +122,7 @@ jobs:
     name: test (${{ matrix.os }}, ${{ matrix.python }})
     needs: package
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.slow == '1' && 45 || 30 }}
     strategy:
       fail-fast: false
       matrix:
@@ -365,6 +369,99 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: junit-constrained-ubuntu-24.04-arm-py3.11-1cpu-2gib
+          path: junit/
+          if-no-files-found: warn
+
+  latest:
+    # Every other job installs from uv.lock, with uv pinned (decisions.md 59), which also fixes the
+    # CPython patch builds uv manages. This one takes the newest CPython build actions/python-versions
+    # publishes, through actions/setup-python, and uses the pinned uv only to resolve the package's
+    # dependencies fresh from PyPI and install them against it, so the monthly run sees new NumPy and
+    # CPython releases. uv may not find or download any other interpreter.
+    name: latest (${{ matrix.os }}, ${{ matrix.python }}, newest NumPy, extras and CPython; scheduled)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, python: "3.11" }
+          - { os: ubuntu-24.04, python: "3.14t" }
+          - { os: ubuntu-24.04-arm, python: "3.14" }
+          - { os: macos-15, python: "3.14t" }
+    env:
+      FRAMES2PY_REQUIRE_EXTRAS: "1"
+      UV_PYTHON_PREFERENCE: only-system
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - run: echo "PY=$RUNNER_TEMP/venv/bin/python" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          check-latest: true
+          update-environment: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist
+      - name: Check setup-python's interpreter is the newest build for this runner
+        env:
+          BASE: ${{ steps.python.outputs.python-path }}
+        run: |
+          echo "setup-python: ${{ steps.python.outputs.python-version }} at $BASE"
+          "$BASE" -VV
+          "$BASE" .github/scripts/check_latest_python.py newest --requested "${{ matrix.python }}"
+      - name: Install the wheel with every extra, resolved fresh, and the locked test tools, on that interpreter
+        env:
+          BASE: ${{ steps.python.outputs.python-path }}
+        run: |
+          uv --version
+          test "$(uv --version | cut -d' ' -f2)" = "$UV_VERSION"
+          uv venv --python "$BASE" "$RUNNER_TEMP/venv"
+          uv export --frozen --only-group test --no-emit-project --no-hashes -o "$RUNNER_TEMP/test.txt"
+          uv pip install --python "$PY" -r "$RUNNER_TEMP/test.txt"
+          uv pip install --python "$PY" --upgrade "$(ls dist/*.whl)[$EXTRAS]"
+          uv pip freeze --python "$PY"
+          "$PY" -VV
+          "$PY" .github/scripts/check_latest_python.py venv --base "$BASE"
+      - name: Check the GIL stays disabled with NumPy and every backend loaded
+        if: endsWith(matrix.python, 't')
+        run: |
+          "$PY" - <<'EOF'
+          import sys
+          import numpy, h5py, hdf5plugin, pyglet, dv_processing
+          import frames2py, frames2py.adapters.aedat4, frames2py.adapters.hdf5, frames2py.recorder, frames2py.viewer
+          print(sys.version, "GIL enabled:", sys._is_gil_enabled())
+          assert not sys._is_gil_enabled(), "the GIL is enabled"
+          EOF
+      - name: Run the test suite against the installed wheel
+        run: |
+          mkdir -p junit
+          "$PY" -m pytest -q -p no:cacheprovider --junitxml=junit/junit.xml
+      - name: Check the JUnit report, and that the tests ran on setup-python's interpreter
+        env:
+          BASE: ${{ steps.python.outputs.python-path }}
+        run: |
+          if [[ "${{ matrix.python }}" == *t ]]; then
+            "$PY" .github/scripts/check_junit.py junit/junit.xml --installed --gil disabled --ran "$PARALLEL_STATS_TEST"
+          else
+            "$PY" .github/scripts/check_junit.py junit/junit.xml --installed --gil enabled
+          fi
+          "$PY" .github/scripts/check_latest_python.py junit junit/junit.xml \
+            --version "$("$BASE" -c 'import platform; print(platform.python_version())')"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-latest-${{ matrix.os }}-py${{ matrix.python }}
           path: junit/
           if-no-files-found: warn
 

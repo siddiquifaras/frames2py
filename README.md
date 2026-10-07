@@ -5,6 +5,10 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="https://github.com/siddiquifaras/frames2py/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/siddiquifaras/frames2py/ci.yml?branch=main&label=CI&style=flat-square"></a> <a href="https://github.com/siddiquifaras/frames2py/blob/main/LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square"></a> <a href="https://siddiquifaras.github.io/frames2py/reference/support/"><img alt="Python: 3.11 to 3.14, and 3.14t" src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14%20%7C%203.14t-grey?style=flat-square"></a> <a href="https://siddiquifaras.github.io/frames2py/reference/support/"><img alt="Platforms: Linux, macOS arm64" src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20arm64-grey?style=flat-square"></a> <a href="https://pypi.org/project/frames2py/"><img alt="Version on PyPI" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fpypi.org%2Fpypi%2Fframes2py%2Fjson&query=%24.info.version&label=version&color=brightgreen&style=flat-square"></a>
+</p>
+
 **Live, decoupled observation of event-camera state.**
 
 **Documentation: <https://siddiquifaras.github.io/frames2py/>**
@@ -23,24 +27,27 @@ event stream                 your producer: a camera SDK, a file adapter, your o
     ↓  Engine.ingest()       EVENT_DTYPE arrays, on the producer's thread
 Frames2Py
     ↓
-accumulation / kernel        counts, polarity, time surface, decays
+accumulation / kernel        counts, polarity, time surface, decays, time bins
     ↓
 Engine                       publishes at most once per snapshot_interval_ms
     ↓
 immutable snapshot           a fresh frame + metadata, shared, never written again
     ↓
-independent consumers        engine.snapshot(): any thread, any number
+independent consumers        engine.snapshot() or wait_for_newer(): any thread, any number
 ```
 
 - **`Engine`**: the live runtime. One producer thread calls `ingest()`; consumers call
-  `snapshot()`. `ingest()` does its CPU work on the caller's thread and never waits on a
-  consumer or on I/O.
+  `snapshot()`, or block in `wait_for_newer()` until a newer snapshot is published.
+  `ingest()` does its CPU work on the caller's thread and never waits on a consumer or on
+  I/O.
 - **`Accumulator`**: the same accumulation without publication or threads, for offline
   processing, tests and loops you drive yourself.
 - **Kernels**: `event_count` and `polarity` (windowed counts: each snapshot holds only the
   events since the previous publication), `time_surface` (latest timestamp per pixel),
   `ExpDecay(decay)` (decays once per call) and `TimestampDecay(tau_us)` (decays with event
-  time, independent of how events are batched).
+  time, independent of how events are batched); and two temporal kernels for models,
+  `StackedHistogram(bins=..., bin_us=...)` (per-polarity counts in time bins) and
+  `VoxelGrid(bins=..., bin_us=...)` (a signed linear voxel grid).
 - **Snapshots**: a frame and its metadata (watermark, sequence) from one publication. The
   frame is shared by every consumer and read-only; `snapshot.copy()` gives you your own.
 
@@ -77,7 +84,8 @@ ingested: 10000 out of bounds: 0
 ```
 
 In a live program, `ingest()` runs in the producer's own loop on its own thread, and consumers
-such as the viewer (`frames2py.viewer.run(engine.snapshot)`) read `snapshot()` elsewhere.
+read `snapshot()` elsewhere. The viewer, for example, needs the `viewer` extra and runs on the
+main thread: `from frames2py import viewer`, then `viewer.run(engine.snapshot)`.
 
 ## Installation
 
@@ -111,17 +119,25 @@ What each extra pulls in, and installing the development version from Git:
 
 - **Recorder**: writes events to HDF5, next to `ingest()` in your loop; the Engine never calls
   it.
-- **Replay**: `frames2py.replay.paced()` yields a recording's batches at their recorded pace.
+- **Replay**: `frames2py.replay.paced()` yields a recording's batches at their recorded pace;
+  `frames2py.replay.windows()` turns a recording into a frame every N µs of event time.
 - **Viewer**: `render()` turns a snapshot into an RGB image; `run()` shows an Engine in a
   window.
 
 Frames2Py ships no vendor SDK adapters: convert your SDK's buffers to `EVENT_DTYPE` and call
 `ingest()`.
 
+**PyTorch** is not a dependency. To hand snapshots to a model, copy them first; the tested
+recipe, with dtypes and devices, is
+[Handing snapshots to PyTorch](https://siddiquifaras.github.io/frames2py/consumers/pytorch/).
+
 ## Performance
 
 On one Apple M4 (16 GB), the v1 performance gate measured all 150 of its cells above 20M
-events/s, on CPython 3.11 and free-threaded 3.14t. No other hardware has been measured.
+events/s, on CPython 3.11.14 and free-threaded 3.14.2t, both with NumPy 2.4.6. No other
+hardware has been measured, and 3.14.5 or later has not been measured.
+The two temporal kernels added in 1.1 have a gate of their own, which they don't meet in
+every cell: see [Throughput](https://siddiquifaras.github.io/frames2py/core/kernels/#throughput).
 
 The cells, the method, the live (paced) figures and the caveats:
 [Performance](https://siddiquifaras.github.io/frames2py/reference/performance/).
@@ -129,14 +145,27 @@ The cells, the method, the live (paced) figures and the caveats:
 ## Python and platforms
 
 CPython 3.11 to 3.14 and free-threaded 3.14t (GIL disabled), on Linux x86_64, Linux ARM64 and
-macOS ARM64, tested in CI (3.12 and 3.13 on Linux x86_64 only). Details:
+macOS ARM64, tested in CI (3.12 and 3.13 on Linux x86_64 only). Windows is not supported.
+Details:
 [Supported Python and platforms](https://siddiquifaras.github.io/frames2py/reference/support/).
+
+## Project status
+
+Stable: the 1.x public API changes only compatibly. Maintained on a best-effort basis.
+Known limitations, among them no Windows support, no live camera adapters, no
+cross-process snapshots and performance figures from one machine, are collected under
+[Known limitations](https://siddiquifaras.github.io/frames2py/reference/support/#known-limitations).
 
 ## Documentation
 
 The full documentation, with the event contract, kernel semantics, the snapshot and
 lifecycle model, adapters, the API reference and the benchmark methodology, is at
 **<https://siddiquifaras.github.io/frames2py/>**.
+
+An end-to-end notebook,
+[`examples/live_observation.ipynb`](https://github.com/siddiquifaras/frames2py/blob/main/examples/live_observation.ipynb),
+runs a live Engine on a synthetic event stream with a tracker, a deliberately slow consumer
+and a monitor, and shows what each of them saw. It runs from a checkout of the repository.
 
 ## Development
 
@@ -147,9 +176,14 @@ uv sync --all-extras
 uv run pytest
 ```
 
-See [Testing](https://siddiquifaras.github.io/frames2py/development/testing/) and
-[Contributing](https://siddiquifaras.github.io/frames2py/development/contributing/).
+See [CONTRIBUTING.md](https://github.com/siddiquifaras/frames2py/blob/main/CONTRIBUTING.md)
+and [Testing](https://siddiquifaras.github.io/frames2py/development/testing/). To report a
+security problem privately, see
+[SECURITY.md](https://github.com/siddiquifaras/frames2py/blob/main/SECURITY.md).
 
 ## License
 
-MIT. See [LICENSE](https://github.com/siddiquifaras/frames2py/blob/main/LICENSE).
+Copyright 2026 Muhammad Faras Siddiqui. From 1.1.0, Frames2Py is licensed under the Apache License,
+Version 2.0: see [LICENSE](https://github.com/siddiquifaras/frames2py/blob/main/LICENSE).
+Releases 1.0.0rc1 and 1.0.0 were published under the MIT License, which still applies to
+them.

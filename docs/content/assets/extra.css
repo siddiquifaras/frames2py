@@ -26,3 +26,16 @@
   --md-accent-fg-color: #6A8DFF;
   --md-typeset-a-color: #6A8DFF;
 }
+
+/* Diagrams link to their SVG. On a narrow screen a diagram keeps a minimum width, so its
+   text stays legible, and scrolls sideways like a wide table. */
+.md-typeset a.f2p-diagram {
+  display: block;
+  overflow-x: auto;
+}
+.md-typeset a.f2p-diagram img {
+  display: block;
+  width: 100%;
+  min-width: 640px;
+  height: auto;
+}

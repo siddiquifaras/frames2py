@@ -10,6 +10,10 @@ Gate definition: the five v1 kernels, three resolutions, five
 batch/interval conditions and two distributions, 150 cells, each needing
 >= 20M events/s at both kernel level and ``Engine.ingest()`` level on the
 reference machine. 10k events at 0 ms is not a gate condition.
+
+The temporal-kernel gate (``benchmarks/temporal_gate_preregistration.md``) has the same
+grid over five temporal kernel parameter sets instead of the v1 kernels, 150 more cells. Its
+streams run at 20M events/s of event time.
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ import dataclasses
 import itertools
 from typing import Any, Final
 
-from benchmarks.workloads import DISTRIBUTIONS, Workload
+from benchmarks.workloads import DEFAULT_EVENT_RATE_HZ, DISTRIBUTIONS, Workload
 
 V1_KERNELS: Final = ("event_count", "polarity", "time_surface", "exp_decay", "timestamp_decay")
 PROTOTYPE_KERNELS: Final = ("event_count", "polarity", "time_surface", "exp_decay")
@@ -34,6 +38,17 @@ GATE_BATCH_INTERVALS: Final = (
 GATE_DISTRIBUTIONS: Final = DISTRIBUTIONS
 GATE_THRESHOLD_EVENTS_PER_S: Final = 20_000_000
 REFERENCE_MACHINE: Final = {"chip": "Apple M4", "memory_bytes": 16 * 2**30}
+
+TEMPORAL_KERNEL_CONFIGS: Final = {
+    "stacked_histogram_5x10000": ("stacked_histogram", 5, 10_000),
+    "stacked_histogram_15x3333": ("stacked_histogram", 15, 3_333),
+    "stacked_histogram_10x5000": ("stacked_histogram", 10, 5_000),
+    "voxel_grid_5x12500": ("voxel_grid", 5, 12_500),
+    "voxel_grid_15x3571": ("voxel_grid", 15, 3_571),
+}
+"""The temporal gate's kernel parameter sets: name -> (kernel, ``bins``, ``bin_us``)."""
+TEMPORAL_EVENT_RATE_HZ: Final = 20_000_000
+"""Event-time rate of the temporal gate's streams: 20 events per µs."""
 
 _SEED_OFFSET: Final = {"uniform": 0, "clustered": 1}
 
@@ -78,11 +93,13 @@ class Cell:
         )
 
     def workload(self) -> Workload:
+        temporal = self.kernel in TEMPORAL_KERNEL_CONFIGS
         return Workload(
             distribution=self.distribution,
             sensor_size=self.sensor_size,
             batch_size=self.batch_size,
             seed=self.seed,
+            event_rate_hz=TEMPORAL_EVENT_RATE_HZ if temporal else DEFAULT_EVENT_RATE_HZ,
         )
 
     def to_record(self) -> dict[str, Any]:
@@ -156,9 +173,15 @@ def prototype_baseline_cells() -> tuple[Cell, ...]:
     )
 
 
-_GATE_CONDITIONS: Final = frozenset(cell.condition for cell in gate_cells())
+def temporal_gate_cells() -> tuple[Cell, ...]:
+    """The 150 cells of the temporal-kernel gate, in gate order."""
+    return _cells(tuple(TEMPORAL_KERNEL_CONFIGS), GATE_RESOLUTIONS, GATE_BATCH_INTERVALS, GATE_DISTRIBUTIONS)
+
+
+_GATE_CONDITIONS: Final = frozenset(cell.condition for cell in (*gate_cells(), *temporal_gate_cells()))
 
 SUITES: Final = {
     "gate": gate_cells,
     "prototype-baseline": prototype_baseline_cells,
+    "temporal-gate": temporal_gate_cells,
 }

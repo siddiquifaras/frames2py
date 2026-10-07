@@ -1,0 +1,94 @@
+name: Notebook
+
+# The end-to-end notebook (examples/live_observation.ipynb), run against the built wheel with the
+# notebook dependency group (nbclient, ipykernel, matplotlib). Separate from ci.yml, whose jobs never
+# install that group: their test runs check the committed notebook file and skip running it.
+# Standard CPython builds only: the group's tornado has no free-threaded wheel.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notebook-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.20"
+  UV_PYTHON_PREFERENCE: only-managed
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  build:
+    name: build the wheel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv build --no-cache --wheel --out-dir dist
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: notebook-dist
+          path: dist/
+          if-no-files-found: error
+
+  run:
+    name: run (${{ matrix.os }}, ${{ matrix.python }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, python: "3.11" }
+          - { os: macos-15, python: "3.14" }
+    env:
+      FRAMES2PY_REQUIRE_NOTEBOOK: "1"
+    steps:
+      - run: echo "PY=$RUNNER_TEMP/venv/bin/python" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: notebook-dist
+          path: dist
+      - name: Install the wheel with the locked test and notebook groups into a fresh environment
+        run: |
+          uv python install "${{ matrix.python }}"
+          uv venv --python "${{ matrix.python }}" "$RUNNER_TEMP/venv"
+          uv export --frozen --no-default-groups --group test --group notebook --no-emit-project --no-hashes \
+            -o "$RUNNER_TEMP/requirements.txt"
+          uv pip install --python "$PY" -r "$RUNNER_TEMP/requirements.txt" "$(ls dist/*.whl)"
+          uv pip freeze --python "$PY"
+      - name: Run the notebook and check the committed copy against the installed wheel
+        run: |
+          mkdir -p junit
+          "$PY" -m pytest -q -p no:cacheprovider --junitxml=junit/junit.xml tests/test_notebook.py
+      - name: Check the JUnit report
+        run: |
+          "$PY" .github/scripts/check_junit.py junit/junit.xml --installed --gil enabled \
+            --forbid-skip "nbclient is not installed" \
+            --ran "tests.test_notebook::test_the_notebook_runs_against_the_installed_package" \
+            --ran "tests.test_notebook::test_the_committed_notebook_is_one_clean_top_to_bottom_run"
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-notebook-${{ matrix.os }}-py${{ matrix.python }}
+          path: junit/
+          if-no-files-found: warn

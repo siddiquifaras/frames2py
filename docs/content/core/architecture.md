@@ -15,8 +15,10 @@ flowchart TD
 ```
 
 The producer does all of the work: validation, accumulation and publication run inside
-`ingest()`, on the thread that calls it. Consumers only read the latest published snapshot.
-Nothing flows from a consumer back to the producer.
+`ingest()`, on the thread that calls it. Consumers only read the latest published snapshot,
+either when they choose (`snapshot()`) or when a publication wakes them
+(`wait_for_newer()`). Nothing flows from a consumer back to the producer. The
+[overview](../index.md) draws this arrangement next to two common coupled pipelines.
 
 ## Components
 
@@ -24,7 +26,7 @@ Nothing flows from a consumer back to the producer.
 |---|---|
 | **Accumulator** (`frames2py.Accumulator`) | Accumulation through one kernel: structural validation, the timestamp-range check, the bounds check, the watermark, the out-of-bounds count, the kernel's state. Synchronous; no threads, no publication. |
 | **Engine** (`frames2py.Engine`) | An Accumulator (internal, not exposed), the publication cadence, the published snapshot, the lifecycle (`start`, `stop`, `reset`), producer ownership and statistics. |
-| **Kernel** (`frames2py.kernels.Kernel`) | The representation: how in-bounds events change the state, how the state is read out, what happens at a window boundary. A public protocol; the five built-in kernels implement it and so can yours. |
+| **Kernel** (`frames2py.kernels.Kernel`) | The representation: how in-bounds events change the state, how the state is read out, what happens at a window boundary. A public protocol; the seven built-in kernels implement it and so can yours. |
 | **Snapshot publisher** (`frames2py.publish.ImmutablePublisher`) | The hand-off between the producer and consumers: each publication is a new buffer, stored with its metadata as one `Snapshot`. |
 
 ## The ingest path
@@ -53,16 +55,21 @@ on how *you* split events into calls; see [Kernels](kernels.md#expdecay).)
 path that consumer activity can hold or control: no lock a consumer takes, no condition
 variable, no retry or spin loop caused by readers, no queue that waits for consumers to
 drain, no waiting for a consumer to release a buffer. `snapshot()` and `stats` take no lock.
+Each publication also releases the threads blocked in `wait_for_newer()`: one lock release
+per waiter, and one operation on the waiter registry even when nobody waits. That is
+bounded work that never waits for a consumer.
 This is not a promise that the producer is never delayed: it runs in CPython, where the GIL
-(on standard builds), CPython's own per-object locks, garbage collection, the allocator and
+(on standard builds), CPython's own per-object locks (the snapshot list's, the waiter
+registry's), garbage collection, the allocator and
 thread scheduling can all delay a thread. "Never waits" also does not mean "fast":
 `ingest()` does real CPU work on the caller's thread. The lifecycle calls (`start`, `stop`,
 `reset`) share a lock with `ingest()` so that each runs whole; they are control calls, not
 consumers. See [Lifecycle and threads](lifecycle.md).
 
-**The Engine never calls consumer code.** It doesn't know its consumers exist. There are no
-callbacks, hooks, observers or notifications. A consumer pulls `snapshot()` when it wants
-to.
+**The Engine never calls consumer code.** There are no callbacks, hooks or observers. A
+consumer pulls `snapshot()` when it wants to, or blocks in `wait_for_newer()`; the only
+notification is that a publication releases the locks of registered waiters, which then run
+on their own threads.
 
 **The recorder stays off the ingest path.** The [recorder](../data/recorder.md) is a sink
 your loop writes to next to `ingest()`. The Engine never calls it and never waits for it;

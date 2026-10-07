@@ -66,6 +66,11 @@ def git_state(repo: Path = _REPO) -> dict[str, Any]:
     }
 
 
+def src_tree(repo: Path = _REPO) -> str | None:
+    """The git tree hash of ``src/`` at HEAD (``git rev-parse HEAD:src``), or ``None``."""
+    return _run("git", "rev-parse", "HEAD:src", cwd=repo)
+
+
 def working_tree_clean(env: dict[str, Any]) -> bool | None:
     """Whether the recorded commit alone identifies the code that ran.
 
@@ -136,6 +141,7 @@ def runtime() -> dict[str, Any]:
         "platform": platform.platform(),
         "machine": platform.machine(),
         "executable": sys.executable,
+        "src_tree": src_tree(),
     }
 
 
@@ -151,6 +157,7 @@ def capture() -> dict[str, Any]:
     return {
         "captured_at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
         **git_state(),
+        "src_tree": src_tree(),
         "machine": platform.machine(),
         "chip": _chip(),
         "cpu_count": os.cpu_count(),

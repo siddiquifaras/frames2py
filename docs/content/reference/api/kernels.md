@@ -1,6 +1,6 @@
 # Kernels API
 
-`frames2py.kernels` holds the Kernel protocol and the five built-in kernels. The kernel
+`frames2py.kernels` holds the Kernel protocol and the seven built-in kernels. The kernel
 classes are also exported from `frames2py`. Their semantics are on the
 [Kernels](../../core/kernels.md) page; the methods listed here are the Kernel protocol, which
 the Accumulator calls. You don't call them yourself unless you are writing a kernel.
@@ -16,3 +16,11 @@ the Accumulator calls. You don't call them yourself unless you are writing a ker
 ::: frames2py.kernels.ExpDecay
 
 ::: frames2py.kernels.TimestampDecay
+
+::: frames2py.kernels.StackedHistogram
+    options:
+      show_bases: false
+
+::: frames2py.kernels.VoxelGrid
+    options:
+      show_bases: false
