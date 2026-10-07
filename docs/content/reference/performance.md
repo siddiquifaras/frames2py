@@ -30,10 +30,13 @@ events per second** across a fixed matrix of conditions:
   Engine's clock driven as if events arrived at exactly 20M events/s, so publications happen
   on the real schedule; statistic: events / total time inside the timed calls.
 
-Measured on commit `6a0fa27` with two runtimes, each gated on its own:
+Measured on commit `6a0fa27`, before 1.0.0, with two runtimes, each gated on its own:
 
 - **CPython 3.11.14**, NumPy 2.4.6;
 - **CPython 3.14.2t**, free-threaded, GIL disabled (checked in every run), NumPy 2.4.6.
+
+The ingest path has changed since and was not re-measured; the changes are listed under
+[Code measured](methodology.md).
 
 **Result: all 150 cells passed at both levels on both runtimes.** Every cell was a clear pass
 (at or above 22M events/s on the median of 5 runs), so no cell needed the borderline stage.

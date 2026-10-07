@@ -292,6 +292,9 @@ temporal kernels' gate (commit `8131aca`); its method and qualifications are
 on [Benchmark methodology](../reference/methodology.md#the-temporal-kernel-gate), and every
 cell is in
 [`benchmarks/results/temporal_gate_run2.csv`](https://github.com/siddiquifaras/frames2py/blob/main/benchmarks/results/temporal_gate_run2.csv).
+The Engine's producer-thread check changed after `8131aca`: `ingest()` now looks up the
+calling thread's object instead of its thread ident, one lookup and one comparison per call.
+The figures below were not re-measured after that change.
 The gate's target is 20M events/s at kernel level and through `Engine.ingest()`, for five
 parameter sets (`StackedHistogram` 5 x 10,000, 15 x 3,333 and 10 x 5,000 µs; `VoxelGrid` 5 x
 12,500 and 15 x 3,571 µs), three resolutions, batches of 10k, 100k and 1M events, and

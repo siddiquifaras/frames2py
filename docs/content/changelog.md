@@ -11,6 +11,8 @@ is also the GitHub Release text. The tests fail when pyproject.toml's version ha
 
 ## 1.1.0
 
+Released 2026-10-07.
+
 A release that adds to 1.0 without changing what 1.0 code does, apart from one fix (below):
 waiting for a newer snapshot, two temporal representations for event-vision models, frames
 at fixed steps of event time, and a tested recipe for handing snapshots to PyTorch.
@@ -25,6 +27,7 @@ pip install --upgrade frames2py
   1.0.0rc1 and 1.0.0 were published under the MIT License and stay under it: their files on
   PyPI keep their MIT licence file and metadata. The licence text is in
   [LICENSE](https://github.com/siddiquifaras/frames2py/blob/main/LICENSE).
+- The package metadata and the copyright line name the author as Muhammad Faras Siddiqui.
 
 ### New
 
@@ -80,6 +83,9 @@ pip install --upgrade frames2py
 
 - The consumer pattern now waits with `wait_for_newer()`, with polling as the alternative
   for consumers on their own clock.
+- `SnapshotMeta.sequence` is described as strictly increasing, as the contract promises,
+  not as increasing by one per publication: a consumer can tell that it skipped
+  publications, not how many.
 - New: the temporal kernel semantics table, the measured cost of waiting, the results of the
   v1 observation study (with its scope: one machine, one workload, threads in one process),
   and a [Known limitations](https://siddiquifaras.github.io/frames2py/reference/support/#known-limitations) section.
@@ -99,12 +105,17 @@ pip install --upgrade frames2py
 - [CONTRIBUTING.md](https://github.com/siddiquifaras/frames2py/blob/main/CONTRIBUTING.md)
   and [SECURITY.md](https://github.com/siddiquifaras/frames2py/blob/main/SECURITY.md), also
   shown under Development in the documentation.
+- The README shows badges for CI on `main`, the licence, the supported Python versions and
+  platforms, and the version on PyPI.
 
 ### Maintenance
 
 - CI also runs once a month on `main`, including a job that installs the newest NumPy,
   extras and CPython builds instead of the lockfile's.
 - A separate `notebook.yml` workflow runs the end-to-end notebook against the built wheel.
+- The build backend is pinned to exactly `uv_build==0.12.20` (1.0 allowed
+  `>=0.12.20,<0.13`), so building from the sdist uses the backend the release was built and
+  checked with.
 
 ### Upgrading from 1.0
 
@@ -123,8 +134,8 @@ versions and platforms and the NumPy floor are unchanged;
   than its own watermark (above).
 - Two internal changes speed up 1.0 paths without changing their results: the Accumulator
   reuses the timestamp maximum of the range check, and `TimestampDecay` computes its
-  exponentials in place. The v1 performance figures were measured on 1.0's code and not
-  re-measured.
+  exponentials in place. The v1 performance figures were measured before 1.0.0, on commit
+  `6a0fa27`, and were not re-measured on 1.1.
 - Cross-process snapshots are not part of 1.1.
 
 ## 1.0.0

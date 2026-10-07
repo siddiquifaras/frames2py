@@ -5,10 +5,23 @@ file contains, and how to measure your own machine. The benchmark suite lives in
 repository's `benchmarks/` directory. It is not part of the installed package, so every
 command below runs from a checkout.
 
-**Code measured.** The temporal-kernel gate and the `wait_for_newer` measurement were each
-measured at the commits recorded in their sections below. The Engine's producer-thread check
-changed after both: `ingest()` now looks up the calling thread's object instead of its
-thread ident, one lookup and one comparison per call. That change was not re-measured.
+**Code measured.** The v1 gate, the `wait_for_newer` measurement and the temporal-kernel
+gate were each taken at the commit recorded in its section below. The ingest path changed
+after each of them, and none was re-measured on the released code:
+
+- **the v1 gate** (`6a0fa27`, before 1.0.0): since then, each publication also takes a
+  step in `wait_for_newer()`'s waiter registry, with or without waiters; the Accumulator
+  reuses the range check's timestamp maximum; `TimestampDecay` checks whether its division
+  can overflow (from 1.0.0) and computes its exponentials in place; and the producer-thread
+  check changed (below);
+- **the `wait_for_newer` measurement** (`dcc1fa1`): the Accumulator's reuse of the
+  timestamp maximum, `TimestampDecay`'s exponentials in place, and the producer-thread
+  check;
+- **the temporal-kernel gate** (its second run, `8131aca`, whose figures the kernels page
+  gives): the producer-thread check.
+
+The producer-thread check: `ingest()` now looks up the calling thread's object instead of
+its thread ident, one lookup and one comparison per call.
 
 ## The gate, precisely
 
